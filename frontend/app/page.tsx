@@ -1,69 +1,9 @@
-import Image from "next/image";
-
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
-}
+import Link from 'next/link';
+import TopicCard from '@/components/TopicCard';
+import StoryBrowser from '@/components/StoryBrowser';
+import { latestTopics,dateLabel } from '@/lib/topics';
+import { summaries } from '@/lib/summaries';
+import { JsonLd,pageMetadata } from '@/lib/seo';
+import { siteConfig } from '@/config/site';
+export const metadata={...pageMetadata('Latest Trending News in Hindi & English','Today’s stories, carefully explained. Read Hindi and English coverage of India, sports, technology, education and more.','/'),title:{absolute:'TrendsDuniya - Latest Trending News in Hindi & English'}};
+export default function Home(){const topics=latestTopics();const featured=topics.filter(t=>t.featured).slice(0,3);const picks=featured.length?featured:topics.slice(0,3);return <div className="container home"><div className="edition-line"><span>THE DAILY EDITION</span><time dateTime={topics[0]?.updatedAt}>{topics[0]&&dateLabel(topics[0].updatedAt)}</time><span>HINDI + ENGLISH</span></div><section className="hero"><p className="eyebrow">BEYOND THE HEADLINE</p><h1><span lang="hi">आज क्या ट्रेंड कर रहा है?</span> <span className="hero-divider">|</span> <span>What&apos;s Trending Today</span></h1><p lang="hi">आज की चर्चित खबरें, trending topics और आसान explainers — Hindi और English में.</p></section><section className="top-stories"><div className="section-heading"><h2>Top Stories</h2><Link href="/latest">The latest edition ↗</Link></div><div className="top-grid">{picks.map((t,i)=><TopicCard topic={t} key={t.slug} lead={i===0}/>)}</div></section><div className="editorial-strip"><span className="strip-mark">TD /</span><div><strong>A little more context. A better understanding.</strong><p>Original explainers, named sources and a clear distinction between what is known and what is still developing.</p></div><Link href="/editorial-policy">Our editorial approach ↗</Link></div><section><div className="section-heading"><h2>Trending Now</h2><span>Stories worth your time</span></div><StoryBrowser stories={summaries(topics)}/></section>{[['Sports','Latest in Sports'],['Entertainment','Latest in Entertainment'],['Technology','Technology'],['India','India']].map(([category,title])=>{const items=topics.filter(t=>t.category===category).slice(0,3);return items.length>0&&<section key={category}><div className="section-heading"><h2>{title}</h2><Link href={`/category/${category.toLowerCase()}`}>View all ↗</Link></div><div className="story-grid">{items.map(t=><TopicCard topic={t} key={t.slug}/>)}</div></section>})}<div className="language-columns">{(['hi','en'] as const).map(lang=><section key={lang}><div className="section-heading"><h2>{lang==='hi'?'Hindi Stories / हिन्दी':'English Stories'}</h2></div>{topics.filter(t=>t.language===lang).slice(0,3).map(t=><TopicCard key={t.slug} topic={t}/>)}</section>)}</div><JsonLd data={{'@context':'https://schema.org','@graph':[{'@type':'WebSite','@id':`${siteConfig.url}/#website`,url:siteConfig.url,name:siteConfig.name,inLanguage:['en','hi']},{'@type':'Organization','@id':`${siteConfig.url}/#organization`,name:siteConfig.name,url:siteConfig.url}]}}/></div>;}
