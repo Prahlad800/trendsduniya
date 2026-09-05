@@ -1,0 +1,4 @@
+import Link from 'next/link';
+import { policyLinks } from '@/config/site';
+import { categories } from '@/lib/types';
+export default function Footer(){return <footer className="site-footer"><div className="container"><div className="footer-top"><div><Link href="/" className="brand">Trends<span>Duniya</span><i>.</i></Link><p>Stories that matter.<br/>Context that makes a difference.</p><span>Independent perspectives. Hindi & English.</span></div><div><h2>Explore</h2><div className="footer-links"><Link href="/latest">Latest Stories</Link>{categories.map(c=><Link key={c} href={`/category/${c.toLowerCase()}`}>{c}</Link>)}</div></div><div><h2>The publication</h2><div className="footer-policy">{policyLinks.map(([title,path])=><Link key={path} href={path}>{title}</Link>)}</div></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} TrendsDuniya. All rights reserved.</span><span>Read beyond the headline.</span></div></div></footer>;}

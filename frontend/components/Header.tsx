@@ -1,0 +1,5 @@
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+const navigation=['India','Sports','Entertainment','Technology','Business','Education','Science','Health'];
+export default function Header(){const [open,setOpen]=useState(false);return <header className="site-header"><div className="masthead container"><Link className="brand" href="/" aria-label="TrendsDuniya home">Trends<span>Duniya</span><i>.</i></Link><span className="masthead-note">THE STORIES. THE CONTEXT.</span><div className="header-actions"><Link href="/search" className="search-link" aria-label="Search stories">⌕ <span>Search</span></Link><button className="menu-button" aria-label={open?'Close navigation':'Open navigation'} aria-expanded={open} aria-controls="main-nav" onClick={()=>setOpen(!open)}>{open?'✕':'☰'}</button></div></div><nav id="main-nav" aria-label="Main navigation" className={`main-nav container ${open?'is-open':''}`} onClick={()=>setOpen(false)}><Link href="/">Home</Link><Link href="/latest">Latest</Link>{navigation.map(n=><Link key={n} href={`/category/${n.toLowerCase()}`}>{n}</Link>)}<span className="nav-language">EN / हिन्दी</span></nav></header>;}

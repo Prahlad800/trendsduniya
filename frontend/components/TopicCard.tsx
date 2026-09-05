@@ -1,0 +1,4 @@
+import Link from 'next/link';
+import type { Topic } from '@/lib/types';
+import { dateLabel,getRelated } from '@/lib/topics';
+export default function TopicCard({topic,lead=false}:{topic:Topic;lead?:boolean}){const count=getRelated(topic).length;return <article className={`topic-card ${lead?'lead-card':''}`} lang={topic.language}><div className="card-eyebrow"><Link href={`/category/${topic.category.toLowerCase()}`} className="category-label">{topic.category}</Link><span>{topic.language==='hi'?'हिन्दी':'ENGLISH'}</span></div><h3><Link href={`/topic/${topic.slug}`}>{topic.title}</Link></h3><p>{topic.excerpt}</p><div className="card-bottom"><time dateTime={topic.updatedAt}>{dateLabel(topic.updatedAt)}</time>{count>0&&<span className="related-count">+{count} more</span>}<Link className="read-link" href={`/topic/${topic.slug}`} aria-label={`Read ${topic.title}`}>Read More ↗</Link></div></article>;}
