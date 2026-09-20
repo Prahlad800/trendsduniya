@@ -5,8 +5,11 @@ import { startScheduler } from "./src/services/scheduler.service.js";
 import mongoose from "mongoose";
 
 try {
-  await connectDB();
-  const stopScheduler = startScheduler();
+  let stopScheduler = () => {};
+  if (process.env.VERCEL !== "1") {
+    await connectDB();
+    stopScheduler = startScheduler();
+  }
   const server = app.listen(env.port, () => console.log(`Server running: http://localhost:${env.port}`));
   const shutdown = async (signal) => { console.log(`${signal}: shutting down`); stopScheduler(); server.close(async () => { await mongoose.disconnect(); process.exit(0); }); };
   process.on("SIGINT", shutdown);

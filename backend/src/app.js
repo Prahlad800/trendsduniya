@@ -3,7 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import env from "./config/env.js";
-import { databaseStatus } from "./config/db.js";
+import { connectDB, databaseStatus } from "./config/db.js";
 import authRoutes from "./routes/auth.routes.js";
 import articleRoutes, { adminRouter as adminArticleRoutes } from "./routes/article.routes.js";
 import categoryRoutes, { adminRouter as adminCategoryRoutes } from "./routes/category.routes.js";
@@ -15,6 +15,20 @@ import analyticsRoutes from "./routes/analytics.routes.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
+let connectionPromise;
+
+app.use(async (req, res, next) => {
+	if (req.path === "/" || req.path === "/api/health") return next();
+	try {
+		connectionPromise ??= connectDB();
+		await connectionPromise;
+		next();
+	} catch (error) {
+		connectionPromise = undefined;
+		console.error(`Database connection failed: ${error.message}`);
+		res.status(503).json({ success: false, message: "Database unavailable" });
+	}
+});
 app.use(helmet());
 app.use(cors({
 	origin: (origin, callback) => {
