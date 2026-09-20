@@ -4,8 +4,14 @@ import { connectDB } from "../src/config/db.js";
 let connectionPromise;
 
 export default async function handler(req, res) {
-  const requestPath = req.url?.split("?", 1)[0];
-  const canRunWithoutDatabase = requestPath === "/" || requestPath === "/api/health";
+  const requestUrl = new URL(req.url || "/", "http://localhost");
+  const requestPath = requestUrl.pathname;
+  const isFunctionRoot = requestPath === "/api" || requestPath === "/api/index.js";
+  const canRunWithoutDatabase = isFunctionRoot || requestPath === "/" || requestPath === "/api/health";
+
+  if (isFunctionRoot) {
+    req.url = `/${requestUrl.search}`;
+  }
 
   if (!canRunWithoutDatabase) {
     try {
