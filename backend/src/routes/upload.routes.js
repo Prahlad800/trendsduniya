@@ -1,0 +1,10 @@
+import { Router } from "express";
+import upload from "../middleware/upload.middleware.js";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { allowRoles } from "../middleware/admin.middleware.js";
+import * as controller from "../controllers/upload.controller.js";
+const router = Router();
+router.use(authenticate, allowRoles("superadmin", "admin", "editor", "author"));
+router.post("/image", upload.single("image"), controller.upload);
+router.delete("/image/:publicId", allowRoles("superadmin", "admin"), controller.remove);
+export default router;

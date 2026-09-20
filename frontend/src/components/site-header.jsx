@@ -1,0 +1,10 @@
+"use client";
+import Link from "next/link";
+import {usePathname} from "next/navigation";
+import {useState} from "react";
+import Icon from "./icons";
+export default function SiteHeader({categories=[]}){
+ const pathname=usePathname(),[open,setOpen]=useState(false);
+ return <><div className="utility-bar"><div className="site-container"><span>Independent perspectives. A connected world.</span><div><Link href="/about">Our story</Link><Link href="/saved"><Icon name="bookmark" size={12}/>Reading list</Link></div></div></div><header className="site-header"><div className="site-container masthead"><Link href="/" className="site-brand" aria-label="TrendsDuniya home"><span className="site-brand-icon"><Icon name="globe" size={30}/></span><span>Trends<span>Duniya</span><small>A WORLD OF PERSPECTIVES</small></span></Link><p className="masthead-tagline">Stay curious.<br/><strong>See the bigger picture.</strong></p><form action="/search" className="header-search"><Icon name="search" size={17}/><input name="q" aria-label="Search stories" placeholder="What’s on your mind?" required/><button aria-label="Search" type="submit"><Icon name="arrow" size={16}/></button></form><button className="mobile-nav-button" onClick={()=>setOpen(!open)} aria-expanded={open} aria-label="Toggle navigation"><Icon name={open?"close":"menu"}/></button></div><div className="nav-border"><nav className={`site-container main-nav ${open?"open":""}`}><Link href="/" onClick={()=>setOpen(false)} className={pathname==="/"?"active":""}>Home</Link><Link href="/latest" onClick={()=>setOpen(false)} className={pathname==="/latest"?"active":""}>Latest stories</Link>{categories.slice(0,6).map(c=><Link key={c._id} href={`/categories/${c.slug}`} onClick={()=>setOpen(false)} className={pathname===`/categories/${c.slug}`?"active":""}>{c.name}</Link>)}<Link href="/categories" onClick={()=>setOpen(false)} className={pathname==="/categories"?"active nav-explore":"nav-explore"}>Explore topics <Icon name="arrow" size={14}/></Link></nav></div></header></>;
+}
+

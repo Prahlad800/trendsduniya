@@ -1,0 +1,58 @@
+{
+  "Business": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917366/trendsduniya/articles/v0jnfwj0vfdvwuuysqky.png",
+    "publicId": "trendsduniya/articles/v0jnfwj0vfdvwuuysqky",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 109044
+  },
+  "Science": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917370/trendsduniya/articles/c24cbvemjlfsvmcrjima.png",
+    "publicId": "trendsduniya/articles/c24cbvemjlfsvmcrjima",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 108962
+  },
+  "Society": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917375/trendsduniya/articles/rdem30n5bzzs7ce8gcea.png",
+    "publicId": "trendsduniya/articles/rdem30n5bzzs7ce8gcea",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 109438
+  },
+  "Technology": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917380/trendsduniya/articles/lqujxyfnzcqqdwrhufcz.png",
+    "publicId": "trendsduniya/articles/lqujxyfnzcqqdwrhufcz",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 110269
+  },
+  "Sports": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917382/trendsduniya/articles/yjxymwsixourpet42vrh.png",
+    "publicId": "trendsduniya/articles/yjxymwsixourpet42vrh",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 106704
+  },
+  "Environment": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917385/trendsduniya/articles/yfyuab0exl5flt7uehvz.png",
+    "publicId": "trendsduniya/articles/yfyuab0exl5flt7uehvz",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 107631
+  },
+  "Culture": {
+    "url": "https://res.cloudinary.com/v8sqcxyj/image/upload/v1789917388/trendsduniya/articles/munf9ph4kqwwljhgceak.png",
+    "publicId": "trendsduniya/articles/munf9ph4kqwwljhgceak",
+    "width": 1200,
+    "height": 675,
+    "format": "png",
+    "bytes": 106584
+  }
+}

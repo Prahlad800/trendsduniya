@@ -1,0 +1,2 @@
+export default function Loading(){return <main className="site-container loading-page" aria-label="Loading stories"><div className="skeleton skeleton-title"/><div className="skeleton skeleton-subtitle"/><div className="stories-grid">{[0,1,2].map(i=><div key={i}><div className="skeleton skeleton-image"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line short"/></div>)}</div></main>;}
+

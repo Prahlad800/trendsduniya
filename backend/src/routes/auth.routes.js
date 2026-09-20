@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { createAdmin, listAdmins, login, logout, me, refresh } from "../controllers/auth.controller.js";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { allowRoles } from "../middleware/admin.middleware.js";
+import { authRateLimit } from "../middleware/rateLimit.middleware.js";
+import { createAdminValidator, loginValidator } from "../validators/auth.validator.js";
+import { validate } from "../middleware/validation.middleware.js";
+const router = Router();
+router.post("/login", authRateLimit, loginValidator, validate, login);
+router.post("/refresh", authRateLimit, refresh);
+router.post("/logout", authenticate, logout);
+router.get("/me", authenticate, me);
+router.get("/admins", authenticate, allowRoles("superadmin"), listAdmins);
+router.post("/admins", authenticate, allowRoles("superadmin"), createAdminValidator, validate, createAdmin);
+export default router;
