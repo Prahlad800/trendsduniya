@@ -8,8 +8,7 @@ import Author from "../models/Author.js";
 import { AppError,success } from "../utils/apiResponse.js";
 import {getPagination,pagination} from "../utils/pagination.js";
 import {seoResponse} from "../services/seo.service.js";
-import {saveArticle,findOwned} from "../services/article.service.js";
-import {deleteImage} from "../services/cloudinary.service.js";
+import {saveArticle,findOwned,deleteUnusedArticleImages} from "../services/article.service.js";
 import {audit} from "../services/audit.service.js";
 import {cleanHtml} from "../utils/sanitize.js";
 const populate=q=>q.populate("author","name slug bio avatar designation").populate("category","name slug").populate("subCategory","name slug").populate("tags","name slug").populate({path:"relatedArticles",match:{status:"published",visibility:"public",deletedAt:null},select:"title slug excerpt media publishedAt"});
@@ -76,16 +75,12 @@ export const permanentDelete=async(req,res)=>{
  if(req.body?.confirmation!=="PERMANENTLY DELETE")throw new AppError('Type PERMANENTLY DELETE to confirm',422);
  const article=await findOwned(req.params.id,req.admin);
  if(article.status!=="deleted")throw new AppError("Move the article to trash first",409);
- const ids=[article.media?.featuredImage?.publicId,...article.media.images.map(i=>i.publicId)].filter(Boolean);
- for(const publicId of new Set(ids)){
-  const shared=await Article.exists({_id:{$ne:article._id},$or:[{"media.featuredImage.publicId":publicId},{"media.images.publicId":publicId}]});
-  if(!shared&&!await Author.exists({avatarPublicId:publicId}))await deleteImage(publicId);
- }
  await mongoose.connection.transaction(async session=>{
   await ArticleRevision.deleteMany({article:article.id},{session});
   await ArticleRedirect.deleteMany({article:article.id},{session});
   await Article.deleteOne({_id:article.id,status:"deleted"},{session});
  });
+ await deleteUnusedArticleImages([article.media?.featuredImage?.publicId,...(article.media?.images||[]).map(image=>image.publicId)],article.id);
  await audit(req,"PERMANENT_DELETE",article);
  success(res,null,"Article permanently deleted");
 };

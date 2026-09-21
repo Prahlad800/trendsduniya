@@ -10,6 +10,7 @@ import { AppError } from "../utils/apiResponse.js";
 import { cleanHtml, plainText } from "../utils/sanitize.js";
 import { uniqueSlug } from "./slug.service.js";
 import { generateCanonical } from "./seo.service.js";
+import { deleteImage } from "./cloudinary.service.js";
 import { articleInput } from "../validators/article.validator.js";
 export const canPublish=admin=>["superadmin","admin","editor"].includes(admin.role);
 export function checkOwner(article,admin){if(admin.role==="author"&&String(article.createdBy)!==admin.id)throw new AppError("You can only access your own articles",403);}
@@ -23,6 +24,20 @@ export function mergeObject(target,source){
   if(value&&typeof value==="object"&&!Array.isArray(value)&&!(value instanceof Date)){target[key]||={};mergeObject(target[key],value);}
   else target[key]=value;
  }return target;
+}
+function articleImageIds(article){
+ return [article?.media?.featuredImage?.publicId,...(article?.media?.images||[]).map(image=>image.publicId)].filter(Boolean);
+}
+export async function deleteUnusedArticleImages(publicIds,articleId){
+ for(const publicId of new Set(publicIds.filter(Boolean))){
+  const shared=await Article.exists({_id:{$ne:articleId},$or:[{"media.featuredImage.publicId":publicId},{"media.images.publicId":publicId}]});
+  if(shared||await Author.exists({avatarPublicId:publicId}))continue;
+  await deleteImage(publicId);
+ }
+}
+export async function cleanupRemovedArticleImages(previous,next,articleId){
+ const currentIds=new Set(articleImageIds(next));
+ await deleteUnusedArticleImages(articleImageIds(previous).filter(publicId=>!currentIds.has(publicId)),articleId);
 }
 export async function validateArticle(article,session){
  for(const [key,Model] of [["category",Category],["subCategory",Category],["author",Author]]){
@@ -54,10 +69,10 @@ export async function validateArticle(article,session){
 }
 export async function saveArticle(req,id,input,action="UPDATE"){
  const data=articleInput.partial().parse(input);delete data.changeReason;
- return mongoose.connection.transaction(async session=>{
+ const result=await mongoose.connection.transaction(async session=>{
   const article=id?await findOwned(id,req.admin,session):new Article({createdBy:req.admin.id,status:"draft"});
   const previous=id?article.toObject():null;
-  if(action==="SCHEDULE_PUBLISH"&&(article.status!=="scheduled"||article.scheduledAt>new Date()))return article;
+  if(action==="SCHEDULE_PUBLISH"&&(article.status!=="scheduled"||article.scheduledAt>new Date()))return {article,previousMedia:previous?.media};
   if(previous?.status==="deleted"&&action!=="RESTORE")throw new AppError("Restore this article before editing",409);
   if(req.admin.role==="author"&&(previous?.status==="published"||previous?.status==="scheduled"||data.status&&data.status!=="draft"))throw new AppError("Authors can edit their own drafts; publishing needs an editor",403);
   if(data.status==="published"&&!canPublish(req.admin))throw new AppError("Publishing permission required",403);
@@ -86,8 +101,10 @@ export async function saveArticle(req,id,input,action="UPDATE"){
   }
   await article.save({session});
   await AuditLog.create([{action:id?action:"CREATE",entityType:"Article",entityId:article._id,performedBy:req.admin._id,previousData:previous,newData:article.toObject(),ipAddress:req.ip,userAgent:req.get("user-agent")}],{session});
-  return article;
+  return {article,previousMedia:previous?.media};
  });
+ if(id)await cleanupRemovedArticleImages(result.previousMedia,result.article,result.article.id);
+ return result.article;
 }
 export const createArticleData=async(data,adminId)=>({...data,slug:await uniqueSlug(Article,data.slug||data.title),createdBy:adminId,updatedBy:adminId});
 export const publishedArticleQuery=(filter={})=>Article.find({...filter,status:"published",visibility:"public",deletedAt:null});
