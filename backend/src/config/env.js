@@ -11,9 +11,17 @@ const env = {
   accessSecret: process.env.JWT_ACCESS_SECRET || "development-access-secret",
   refreshSecret: process.env.JWT_REFRESH_SECRET || "development-refresh-secret",
   siteUrl: (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, ""),
-  frontendUrl: (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, ""),
-  adminUrl: (process.env.ADMIN_URL || "http://localhost:3001").replace(/\/$/, ""),
-  corsOrigins: (process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost:3001")
+  frontendUrl: (process.env.FRONTEND_URL || "http://localhost:3000").replace(
+    /\/$/,
+    "",
+  ),
+  adminUrl: (process.env.ADMIN_URL || "http://localhost:3001").replace(
+    /\/$/,
+    "",
+  ),
+  corsOrigins: (
+    process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost:3001"
+  )
     .split(",")
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean),
