@@ -31,6 +31,17 @@ Production:
 npm start
 ```
 
+### Vercel runtime compatibility
+
+The `sanitize-html` dependency has a scoped `htmlparser2` override to version
+`10.0.0`, which provides a CommonJS entry point. Its ESM-only version 12 crashes
+inside Vercel's loader with `ERR_REQUIRE_ESM`, even though it imports successfully
+on a local Node.js 24 installation. Keep this override until the deployed loader
+supports that dependency chain. The sanitizer itself remains on its current version.
+
+Run `npm run test:deployment` to check startup, health routes, and HTML sanitization
+with `require(ESM)` disabled, without connecting to a database.
+
 ## Environment
 
 ```env
