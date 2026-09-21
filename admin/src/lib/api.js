@@ -34,7 +34,7 @@ export function apiUpload(path,body,onProgress){
   xhr.send(body);
  });
 }
-export const apiPost=(path,body={})=>request(path,{method:"POST",body:body instanceof FormData?body:JSON.stringify(body)});
+export const apiPost=(path,body={},options={})=>request(path,{...options,method:"POST",body:body instanceof FormData?body:JSON.stringify(body)});
 export const apiPut=(path,body)=>request(path,{method:"PUT",body:JSON.stringify(body)});
 export const apiPatch=(path,body)=>request(path,{method:"PATCH",body:JSON.stringify(body)});
 export const apiDelete=(path,body)=>request(path,{method:"DELETE",body:body?JSON.stringify(body):undefined});

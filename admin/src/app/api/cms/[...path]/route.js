@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 const base=(process.env.API_URL||process.env.NEXT_PUBLIC_API_URL||"http://localhost:5000/api").replace(/\/$/,"");
+export const maxDuration=120;
 const secure=process.env.NODE_ENV==="production";
 const refreshing=new Map();
 function refreshSession(refreshToken){
@@ -26,22 +27,25 @@ async function proxy(req,{params}){
  const url=base+path+new URL(req.url).search;
  let tokens;
  try{
-  let upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(25000)});
+  let upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(path.startsWith("/admin/ai/")?100000:25000)});
   const refreshToken=req.cookies.get("td_refresh")?.value;
   if(upstream.status===401&&refreshToken&&path!=="/auth/login"){
    const refreshed=await refreshSession(refreshToken);
    if(refreshed){
     tokens=refreshed;headers.set("Authorization",`Bearer ${tokens.accessToken}`);
-    upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(25000)});
+    upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(path.startsWith("/admin/ai/")?100000:25000)});
    }
   }
   const payload=await upstream.json().catch(()=>({success:false,message:"Invalid API response"}));
+  if(upstream.status===404&&payload.message==="Route not found"&&/^\/admin\/(ai|trending)(\/|$)/.test(path)){
+   return NextResponse.json({success:false,message:"The configured backend does not have AI/trending routes. Use the updated backend or check API_URL in the admin environment."},{status:502});
+  }
   if(path==="/auth/login"&&upstream.ok)tokens=payload.data;
   const safePayload=path==="/auth/login"&&upstream.ok?{...payload,data:{admin:payload.data.admin}}:payload;
   const response=NextResponse.json(safePayload,{status:upstream.status,headers:{"Cache-Control":"no-store"}});
   if(tokens){cookie(response,"td_access",tokens.accessToken,900);cookie(response,"td_refresh",tokens.refreshToken,7*86400);}
   if(path==="/auth/logout"||upstream.status===401){cookie(response,"td_access","",0);cookie(response,"td_refresh","",0);}
   return response;
- }catch{return NextResponse.json({success:false,message:"The CMS server is unavailable. Please try again."},{status:503});}
+ }catch(error){return NextResponse.json({success:false,message:error?.name==="TimeoutError"?"The CMS request timed out. Please retry.":"Cannot connect to the CMS backend. Start the backend server and check the admin API_URL setting."},{status:503});}
 }
 export {proxy as GET,proxy as POST,proxy as PUT,proxy as PATCH,proxy as DELETE};

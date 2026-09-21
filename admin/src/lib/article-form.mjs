@@ -1,5 +1,5 @@
 export const blankArticle=()=>({
- title:"",slug:"",excerpt:"",content:"",summary:"",articleType:"article",language:"en-IN",category:"",subCategory:"",author:"",tags:[],relatedArticles:[],visibility:"public",scheduledAt:"",
+ title:"",slug:"",articleSection:"",trendingTopic:"",excerpt:"",content:"",summary:"",articleType:"article",language:"en-IN",category:"",subCategory:"",author:"",tags:[],relatedArticles:[],visibility:"public",scheduledAt:"",
  media:{featuredImage:null,images:[]},
  seo:{searchIntent:"informational",searchIntentDescription:"",primaryKeyword:"",relatedKeywords:[],relatedTopics:[],metaTitle:"",metaDescription:"",canonicalUrl:"",robots:{index:true,follow:true,maxSnippet:-1,maxImagePreview:"large",maxVideoPreview:-1},openGraph:{title:"",description:"",image:"",imageAlt:""},twitter:{card:"summary_large_image",title:"",description:"",image:"",imageAlt:""}},
  structuredData:{article:{enabled:true,type:"Article"},breadcrumb:{enabled:true}},

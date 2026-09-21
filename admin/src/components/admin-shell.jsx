@@ -2,11 +2,11 @@
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useState} from "react";
-import {LayoutDashboard,Newspaper,FolderOpen,Tags,Users,ChartNoAxesCombined,Settings2,LogOut,ArrowUpRight,Plus,Menu,X,Search,PanelLeftClose,Globe2} from "lucide-react";
+import {LayoutDashboard,Newspaper,FolderOpen,Tags,Users,ChartNoAxesCombined,Settings2,LogOut,ArrowUpRight,Plus,Menu,X,Search,PanelLeftClose,Globe2,TrendingUp,BrainCircuit} from "lucide-react";
 import {useAuth} from "./auth-provider";
 import {siteUrl} from "../lib/api";
 import {Notice} from "./ui";
-const links=[["Overview","/",LayoutDashboard],["Articles","/articles",Newspaper],["Categories","/categories",FolderOpen],["Tags","/tags",Tags],["Authors","/authors",Users],["Analytics","/analytics",ChartNoAxesCombined],["Settings","/settings",Settings2]];
+const links=[["Overview","/",LayoutDashboard],["Articles","/articles",Newspaper],["Categories","/categories",FolderOpen],["Tags","/tags",Tags],["Authors","/authors",Users],["Analytics","/analytics",ChartNoAxesCombined],["Trending Topics","/trending",TrendingUp],["Setup AI","/setup-ai",BrainCircuit],["Settings","/settings",Settings2]];
 export default function AdminShell({children}){
  const path=usePathname(),{admin,logout}=useAuth();const [open,setOpen]=useState(false),[error,setError]=useState("");
  if(path==="/login")return children;

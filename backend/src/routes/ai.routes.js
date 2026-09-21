@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { authenticate } from "../middleware/auth.middleware.js";
+import { allowRoles } from "../middleware/admin.middleware.js";
+import { durableLimit } from "../middleware/aiRateLimit.middleware.js";
+import env from "../config/env.js";
+import * as c from "../controllers/ai.controller.js";
+const router=Router();
+router.use(authenticate,allowRoles("superadmin","admin","editor"));
+router.get("/status",c.status);
+router.post("/generate-article",durableLimit("ai-generation",env.aiGenerationLimit),c.generate);
+router.use(allowRoles("superadmin","admin"));
+router.get("/config",c.getConfig);
+router.put("/config",c.putConfig);
+router.post("/test",durableLimit("ai-test",10),c.test);
+export default router;

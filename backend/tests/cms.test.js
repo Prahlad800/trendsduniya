@@ -23,8 +23,9 @@ before(async()=>{
   if(env.mongoDnsServers.length)dns.setServers(env.mongoDnsServers);
   await mongoose.connect(env.mongoUri,{...mongoConnectionOptions(),dbName:"td_test_"+randomUUID().replaceAll("-","").slice(0,24)});
  }else{
-  db=await MongoMemoryReplSet.create({replSet:{count:1},binary:{version:"7.0.14"}});
-  await mongoose.connect(db.getUri());
+  db=await MongoMemoryReplSet.create({instanceOpts:[{launchTimeout:60000}],replSet:{count:1},binary:{version:"7.0.14"}});
+  env.mongoUri=db.getUri();
+  await mongoose.connect(env.mongoUri);
  }
  for(const Model of [...Object.values(models),AuthSession])await Model.init();
  for(const [role,email]of [["superadmin","cms-admin@example.test"],["author","cms-author@example.test"],["editor","cms-editor@example.test"]])await Admin.create({name:"Integration "+role,email,password:"Integration-password-123",role});
