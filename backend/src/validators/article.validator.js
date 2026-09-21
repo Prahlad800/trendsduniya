@@ -18,7 +18,7 @@ export const articleInput=z.object({
  robots:z.object({index:z.boolean().optional(),follow:z.boolean().optional(),maxSnippet:z.number().int().min(-1).optional(),maxImagePreview:z.enum(["none","standard","large"]).optional(),maxVideoPreview:z.number().int().min(-1).optional()}).strict().optional(),
 }).strict().optional(),
  faq:z.array(z.object({question:text(1000).min(1),answer:text(5000).min(1)}).strict()).max(30).optional(),
- source:z.object({name:text(300).optional(),url:optionalUrl,type:z.enum(["original","agency","official","publication","government","research","other"]).optional(),publishedAt:z.string().datetime({offset:true}).optional(),attributionText:text(3000).optional()}).strict().optional(),
+ source:z.object({name:text(300).optional(),url:optionalUrl,type:z.enum(["","original","agency","official","publication","government","research","other"]).optional(),publishedAt:z.string().datetime({offset:true}).optional(),attributionText:text(3000).optional()}).strict().optional(),
  originalData:z.object({hasOriginalReporting:z.boolean().optional(),hasOriginalAnalysis:z.boolean().optional(),hasOriginalResearch:z.boolean().optional(),hasOriginalImages:z.boolean().optional(),notes:text(5000).optional()}).strict().optional(),
  internalLinks:z.array(z.object({...link,url:internal}).strict()).max(100).optional(),externalLinks:z.array(z.object({...link,url,rel:z.enum(["nofollow","sponsored","ugc","noopener noreferrer",""]).optional()}).strict()).max(100).optional(),
  changeReason:text(1000).optional(),

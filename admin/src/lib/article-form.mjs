@@ -25,7 +25,8 @@ export function toPayload(form){
  delete payload.seo.openGraph;
  delete payload.seo.twitter;
  delete payload.structuredData;
- if(!form.source.type)delete payload.source;
+ payload.source={...form.source};
+ for(const key of ["internalLinks","externalLinks","faq"])payload[key]=form[key].filter(row=>Object.values(row).some(value=>String(value||"").trim()));
  const strip=v=>Array.isArray(v)?v.map(strip):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).filter(([k])=>k!=="_id").map(([k,val])=>[k,strip(val)])):v;
  return strip(payload);
 }

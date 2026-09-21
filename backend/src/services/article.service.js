@@ -35,7 +35,7 @@ export async function validateArticle(article,session){
  article.content=cleanHtml(article.content||"");
  const body=plainText(article.content).replace(/\s+/g," ").toLowerCase();
  for(const faq of article.faq||[])if(!body.includes(faq.question.toLowerCase())||!body.includes(faq.answer.toLowerCase()))throw new AppError("FAQ questions and answers must appear in article content",422);
- if(article.source?.type&&article.source.type!=="original"&&(!article.source.url||!article.source.attributionText))throw new AppError("External sources need a URL and attribution",422);
+
  article.seo||={};
  article.seo.canonicalUrl=generateCanonical(article);
  if(await Article.exists({_id:{$ne:article._id},"seo.canonicalUrl":article.seo.canonicalUrl}).session(session||null))throw new AppError("Canonical URL is already used",409);
@@ -44,7 +44,7 @@ export async function validateArticle(article,session){
  }
  article.analytics||={};article.analytics.readingTime=Math.max(1,Math.ceil(body.split(/\s+/).filter(Boolean).length/220));
  if(["published","scheduled"].includes(article.status)){
-  const required={title:article.title,content:body,excerpt:article.excerpt,author:article.author,category:article.category,"featured image":article.media?.featuredImage?.url,"image alt text":article.media?.featuredImage?.alt,"SEO title":article.seo?.metaTitle,"meta description":article.seo?.metaDescription};
+  const required={title:article.title,content:body,excerpt:article.excerpt,category:article.category,"featured image":article.media?.featuredImage?.url,"image alt text":article.media?.featuredImage?.alt,"SEO title":article.seo?.metaTitle,"meta description":article.seo?.metaDescription};
   const missing=Object.keys(required).filter(key=>!required[key]);
   if(missing.length)throw new AppError(`Before publishing, add: ${missing.join(", ")}`,422);
  }

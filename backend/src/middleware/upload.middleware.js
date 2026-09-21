@@ -2,7 +2,7 @@ import multer from "multer";
 import { AppError } from "../utils/apiResponse.js";
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter: (req, file, cb) =>
     ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(file.mimetype)
       ? cb(null, true)

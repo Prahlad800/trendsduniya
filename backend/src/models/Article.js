@@ -79,6 +79,7 @@ const schema = new mongoose.Schema(
       type: {
         type: String,
         enum: [
+          "",
           "original",
           "agency",
           "official",
