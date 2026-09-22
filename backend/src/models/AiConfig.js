@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 const schema = new mongoose.Schema({
-  singleton: { type: String, default: "default", unique: true, enum: ["default"] },
+  // Keep the existing unique index and legacy article record in place.
+  singleton: { type: String, default: "default", unique: true, enum: ["default", "trending"] },
   provider: String, providerName: String, model: String, baseUrl: String,
   encryptedApiKey: { type: String, select: false },
   apiKeyConfigured: { type: Boolean, default: false },

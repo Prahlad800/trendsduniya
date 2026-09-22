@@ -8,10 +8,12 @@ export function mergeAiDraft(form,generated){
   }
   // The entered headline and existing manual text remain authoritative.
   if(!next.title)next.title=generated.title;
-  if(!form.content&&generated.articleType)next.articleType=generated.articleType;
+  if(!next.category&&generated.suggestedCategory)next.category=generated.suggestedCategory;
+  if(!next.tags?.length&&generated.suggestedTagIds?.length)next.tags=generated.suggestedTagIds;
+  if(!form.content&&(!form.articleType||form.articleType==="article")&&generated.articleType)next.articleType=generated.articleType;
   for(const key of ["searchIntentDescription","primaryKeyword","relatedKeywords","relatedTopics","metaTitle","metaDescription"]){if(!next.seo[key]||Array.isArray(next.seo[key])&&!next.seo[key].length)next.seo[key]=generated.seo[key];}
-  if(!form.seo.searchIntentDescription&&!form.seo.primaryKeyword)next.seo.searchIntent=generated.seo.searchIntent;
+  if((!form.seo.searchIntent||form.seo.searchIntent==="informational")&&!form.seo.searchIntentDescription&&!form.seo.primaryKeyword)next.seo.searchIntent=generated.seo.searchIntent;
   if(!next.originalData.notes)next.originalData.notes=[generated.editorialNotes,generated.suggestedTags?.length?"Suggested tags (review manually): "+generated.suggestedTags.join(", "):""].filter(Boolean).join("\n\n").slice(0,5000);
-  next.scheduledAt="";
+
   return next;
 }

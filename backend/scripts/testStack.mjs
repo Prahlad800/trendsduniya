@@ -1,5 +1,6 @@
 // Run after building admin and frontend. Only a temporary MongoDB is used.
 import assert from "node:assert/strict";
+import {load} from "cheerio";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import net from "node:net";
@@ -16,8 +17,9 @@ const originalFetch=globalThis.fetch;
 const fixture={title:"Integration test headline",slug:"integration-test-headline",excerpt:"A test draft for end-to-end validation.",summary:"Test fixture only.",content:"<p>This is a test fixture, not a news report.</p>",articleType:"news",articleSection:"Testing",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Test",primaryKeyword:"test",relatedKeywords:[],relatedTopics:[],metaTitle:"Integration test headline",metaDescription:"A test draft for end-to-end validation."},faq:[],internalLinks:[],externalLinks:[],suggestedTags:["Testing"],editorialNotes:"Test fixture only."};
 globalThis.fetch=async(url,options)=>{
   const host=new URL(url).hostname;
+  if(host==="api.openai.com"&&JSON.parse(options.body).model==="test-trending-model")return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Testing",trend_score:100-candidateId,why_trending:"Test source coverage",search_keywords:["test"],article_angle:"Test editorial angle",language_priority:"Hindi"}))})}}]}));
   if(host==="api.openai.com")return new Response(JSON.stringify({choices:[{message:{content:JSON.parse(options.body).messages[1].content==="Reply only with OK"?"OK":JSON.stringify(fixture)}}]}),{status:200});
-  if(["trends.google.com","news.google.com","feeds.bbci.co.uk"].includes(host))return new Response(`<rss><channel><item><title>Integration test topic</title><link>https://example.com/test-topic</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`,{status:200});
+  if(["trends.google.com","news.google.com","feeds.bbci.co.uk"].includes(host))return new Response(`<rss><channel>${Array.from({length:25},(_,i)=>`<item><title>Integration test topic ${i}</title><link>https://example.com/test-topic-${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("")}</channel></rss>`,{status:200});
   return originalFetch(url,options);
 };
 const freePort=async()=>{const server=net.createServer();server.listen(0,"127.0.0.1");await once(server,"listening");const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;};
@@ -60,7 +62,7 @@ try{
   await cms("/admin/ai/test","POST",config);
   await cms("/admin/ai/test","POST",{...config,model:"Gemini 3.1 Flash Lite"},422);
   const generated=await cms("/admin/ai/generate-article","POST",{title:fixture.title,language:"en-IN"});
-  const {suggestedTags,editorialNotes,...article}=generated.data.article;
+  const {suggestedTags,editorialNotes,suggestedCategory,suggestedTagIds,...article}=generated.data.article;
   assert.equal(suggestedTags[0],"Testing");assert.ok(editorialNotes);
   const draft=await cms("/admin/articles","POST",{...article,status:"draft"},201);
   assert.equal(draft.data.status,"draft");
@@ -73,9 +75,10 @@ try{
   await cms(`/admin/articles/${draft.data._id}/publish`,"POST",{});
   const publicArticle=await originalFetch(`http://127.0.0.1:${frontPort}/article/${draft.data.slug}`);
   assert.equal(publicArticle.status,200);const html=await publicArticle.text();assert.ok(html.includes("Integration test headline"));assert.ok(html.includes("application/ld+json"));assert.ok(html.includes('rel="canonical"'));checks++;
-  const legacy=await originalFetch(`http://127.0.0.1:${frontPort}/news/${draft.data.slug}`,{redirect:"manual"});assert.equal(legacy.status,308);checks++;
+  const legacy=await originalFetch(`http://127.0.0.1:${frontPort}/news/${draft.data.slug}`,{redirect:"manual"});if(legacy.status===308){assert.equal(legacy.headers.get("location"),`/article/${draft.data.slug}`);}else{assert.equal(legacy.status,200);const $=load(await legacy.text());assert.equal($('meta[http-equiv="refresh"]').attr("content"),`0;url=/article/${draft.data.slug}`);}checks++;
+  await cms("/admin/ai/config/trending","PUT",{...config,model:"test-trending-model",apiKey:"independent-trending-key"});
   await cms("/admin/trending");
-  const trends=await cms("/admin/trending/refresh","POST",{country:"IN"});assert.equal(trends.data.topics.length,1);
+  const trends=await cms("/admin/trending/refresh","POST",{country:"IN"});assert.equal(trends.data.topics.length,20);
   await cms("/admin/trending/history");await cms(`/admin/trending/${trends.data.topics[0]._id}`);
   await cms(`/admin/trending/${trends.data.topics[0]._id}/start-article`,"POST",{});
   for(const path of ["/setup-ai","/trending","/articles/new"]){const r=await originalFetch(`http://127.0.0.1:${adminPort}${path}`);assert.equal(r.status,200,path);checks++;}

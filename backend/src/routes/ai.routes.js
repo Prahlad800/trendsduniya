@@ -12,4 +12,7 @@ router.use(allowRoles("superadmin","admin"));
 router.get("/config",c.getConfig);
 router.put("/config",c.putConfig);
 router.post("/test",durableLimit("ai-test",10),c.test);
+router.get("/config/:type",c.getConfig);
+router.put("/config/:type",c.putConfig);
+router.post("/config/:type/test",durableLimit("ai-test",10),c.test);
 export default router;

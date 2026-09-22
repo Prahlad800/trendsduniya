@@ -4,7 +4,17 @@ const parser=new XMLParser({ignoreAttributes:true,processEntities:false});
 export const countries={IN:{label:"India",locale:"en-IN",zone:"Asia/Kolkata",bbc:"world/asia/india"},US:{label:"USA",locale:"en-US",zone:"America/New_York",bbc:"world/us_and_canada"},GB:{label:"UK",locale:"en-GB",zone:"Europe/London",bbc:"uk"}};
 export function safeSourceUrl(value){try{const u=new URL(value);return ["http:","https:"].includes(u.protocol)&&!u.username&&!u.password?u.href:null;}catch{return null;}}
 async function rss(url,provider){
-  const response=await fetch(url,{signal:AbortSignal.timeout(12000),headers:{"User-Agent":"TrendsDuniya/1.0 (editorial RSS reader)",Accept:"application/rss+xml, application/xml, text/xml"},redirect:"error"});
+  const origin=new URL(url).origin,signal=AbortSignal.timeout(12000);
+  let response;
+  for(let redirects=0;redirects<3;redirects++){
+    response=await fetch(url,{signal,headers:{"User-Agent":"TrendsDuniya/1.0 (editorial RSS reader)",Accept:"application/rss+xml, application/xml, text/xml"},redirect:"manual"});
+    if(![301,302,307,308].includes(response.status))break;
+    const location=response.headers.get("location");await response.body?.cancel();
+    if(!location)throw new Error("Feed redirect missing location");
+    const target=new URL(location,url);
+    if(target.origin!==origin||target.username||target.password||!target.pathname.startsWith("/rss/"))throw new Error("Unsafe feed redirect");
+    url=target.href;
+  }
   if(!response.ok)throw new Error("Feed unavailable");
   const reader=response.body.getReader();let size=0;const chunks=[];
   try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>2000000)throw new Error("Feed too large");chunks.push(Buffer.from(value));}}finally{await reader.cancel();}
@@ -16,11 +26,12 @@ async function rss(url,provider){
     if(!title||!url)return [];
     const published=new Date(item.pubDate);
     if(!Number.isFinite(+published)||Date.now()-published>3*86400000||published>Date.now()+3600000)return [];
-    return [{title:provider==="googleNews"?title.replace(/ - [^-]+$/,""):title,url,provider,position:index+1,publishedAt:published,signal:provider==="googleTrends"?Math.log10(1+Number(String(item["ht:approx_traffic"]||"0").replace(/[^\d]/g,""))):0}];
+    return [{title:provider.startsWith("googleNews")?title.replace(/ - [^-]+$/,""):title,url,provider,position:index+1,publishedAt:published,signal:provider==="googleTrends"?Math.log10(1+Number(String(item["ht:approx_traffic"]||"0").replace(/[^\d]/g,""))):0}];
   });
 }
 export const trendProviders=[
   {name:"googleTrends",fetch:country=>rss(`https://trends.google.com/trending/rss?geo=${country}`,"googleTrends")},
   {name:"googleNews",fetch:country=>rss(`https://news.google.com/rss?hl=${countries[country].locale}&gl=${country}&ceid=${country}:en`,"googleNews")},
   {name:"bbcNews",fetch:country=>rss(`https://feeds.bbci.co.uk/news/${countries[country].bbc}/rss.xml`,"bbcNews")},
+  ...["TECHNOLOGY","BUSINESS","SCIENCE","SPORTS","ENTERTAINMENT","WORLD"].map(topic=>({name:`googleNews${topic}`,fetch:country=>rss(`https://news.google.com/rss/headlines/section/topic/${topic}?hl=${countries[country].locale}&gl=${country}&ceid=${country}:en`,`googleNews${topic}`)})),
 ];

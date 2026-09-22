@@ -3,7 +3,7 @@ import "dotenv/config";
 const env = {
   aiEncryptionKey: process.env.AI_ENCRYPTION_KEY || "",
   cronSecret: process.env.CRON_SECRET || "",
-  aiTimeoutMs: Math.min(90000, Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 75000)),
+  aiTimeoutMs: Math.min(240000, Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 240000)),
   aiGenerationLimit: Math.max(1, Number(process.env.AI_GENERATION_LIMIT) || 10),
   trendRefreshHours: Math.min(24, Math.max(1, Number(process.env.TREND_REFRESH_HOURS) || 24)),
   aiCustomHosts: (process.env.AI_CUSTOM_HOSTS || "").split(",").map(v => v.trim().toLowerCase()).filter(Boolean),

@@ -7,12 +7,12 @@ export function sameTopic(a,b){
   if(nums(x)!==nums(y))return false;
   return shared.length>=2&&shared.length===Math.min(x.size,y.size)&&shared.length/Math.max(x.size,y.size)>=0.65;
 }
-export function rankTrends(items,now=new Date()){
+export function rankTrends(items,now=new Date(),limit=20){
   const groups=[];
   for(const item of items){
     let group=groups.find(g=>sameTopic(g.title,item.title));
     if(!group){group={title:item.title,items:[]};groups.push(group);}
-    if(!group.items.some(i=>i.provider===item.provider&&i.url===item.url))group.items.push(item);
+    if(!group.items.some(i=>i.url===item.url))group.items.push(item);
   }
   return groups.map(g=>{
     const providers=[...new Set(g.items.map(i=>i.provider))];
@@ -21,5 +21,5 @@ export function rankTrends(items,now=new Date()){
     const signal=Math.max(...g.items.map(i=>i.signal||0))*3;
     const score=Math.round(Math.min(100,position+freshness+signal+(providers.length-1)*12+Math.min(10,g.items.length*2)));
     return {title:g.title,normalizedTitle:normalizeTrend(g.title),slug:normalizeTrend(g.title).replaceAll(" ","-"),score,categoryGuess:"",keywords:[...tokens(g.title)].slice(0,12),relatedQueries:[],firstSeenAt:now,lastSeenAt:now,sources:g.items.map(i=>({provider:i.provider,title:i.title,url:i.url,position:i.position,fetchedAt:now}))};
-  }).sort((a,b)=>b.score-a.score||a.normalizedTitle.localeCompare(b.normalizedTitle)).slice(0,10).map((t,i)=>({...t,rank:i+1}));
+  }).sort((a,b)=>b.score-a.score||a.normalizedTitle.localeCompare(b.normalizedTitle)).slice(0,limit).map((t,i)=>({...t,rank:i+1}));
 }

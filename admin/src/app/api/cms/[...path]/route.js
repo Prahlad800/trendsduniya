@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 const base=(process.env.API_URL||process.env.NEXT_PUBLIC_API_URL||"http://localhost:5000/api").replace(/\/$/,"");
-export const maxDuration=120;
+export const maxDuration=300;
 const secure=process.env.NODE_ENV==="production";
 const refreshing=new Map();
 function refreshSession(refreshToken){
@@ -27,13 +27,13 @@ async function proxy(req,{params}){
  const url=base+path+new URL(req.url).search;
  let tokens;
  try{
-  let upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(path.startsWith("/admin/ai/")?100000:25000)});
+  let upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(/^\/admin\/(ai|trending)(\/|$)/.test(path)?270000:25000)});
   const refreshToken=req.cookies.get("td_refresh")?.value;
   if(upstream.status===401&&refreshToken&&path!=="/auth/login"){
    const refreshed=await refreshSession(refreshToken);
    if(refreshed){
     tokens=refreshed;headers.set("Authorization",`Bearer ${tokens.accessToken}`);
-    upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(path.startsWith("/admin/ai/")?100000:25000)});
+    upstream=await fetch(url,{method:req.method,headers,body,cache:"no-store",signal:AbortSignal.timeout(/^\/admin\/(ai|trending)(\/|$)/.test(path)?270000:25000)});
    }
   }
   const payload=await upstream.json().catch(()=>({success:false,message:"Invalid API response"}));

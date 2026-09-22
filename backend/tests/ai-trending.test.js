@@ -19,6 +19,9 @@ import {normalizeTrend,sameTopic,rankTrends} from "../src/services/trending/tren
 import {refreshTrends,trendDate,queryDate} from "../src/services/trending/trending.service.js";
 import {blankArticle,toPayload,fromArticle} from "../../admin/src/lib/article-form.mjs";
 import {mergeAiDraft} from "../../admin/src/lib/ai-draft.mjs";
+import jwt from "jsonwebtoken";
+import AuthSession from "../src/models/AuthSession.js";
+import {setTimeout as delay} from "node:timers/promises";
 let db,adminToken,editorToken,authorToken;
 const auth=(r,t=adminToken)=>r.set("Authorization","Bearer "+t);
 const config={provider:"openrouter",model:"openai/gpt-5-mini",apiKey:"test-secret-key-not-real",temperature:0.4,maxTokens:5000,outputMode:"json",enabled:true};
@@ -64,6 +67,7 @@ test("test endpoint sends a tiny request, stores status, and redacts upstream er
   const {apiKey,...withoutKey}=config;
   const r=await auth(request(app).post("/api/admin/ai/test")).send(withoutKey);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.data.success,true);
   assert.equal((await AiConfig.findOne()).lastTestStatus,"connected");
+  const repeated=await auth(request(app).post("/api/admin/ai/test")).send(config);assert.equal(repeated.status,200);assert.equal((await AiConfig.findOne()).lastTestStatus,"connected");
   globalThis.fetch.mock.restore();t.mock.method(globalThis,"fetch",async()=>new Response(apiKey,{status:401}));
   const failed=await auth(request(app).post("/api/admin/ai/test")).send(withoutKey);assert.equal(failed.status,502);assert.ok(!JSON.stringify(failed.body).includes(apiKey));
 });
@@ -110,15 +114,48 @@ test("trend normalization merges clear variants but not different numbered event
   const now=new Date(),items=[{title:"iPhone 18",provider:"a",url:"https://a.test",position:1,publishedAt:now},{title:"Apple iPhone 18",provider:"b",url:"https://b.test",position:2,publishedAt:now}];assert.equal(rankTrends(items).length,1);assert.equal(rankTrends(items)[0].sources.length,2);
   assert.throws(()=>queryDate({date:"2026-02-30"}));assert.throws(()=>queryDate({country:"ZZ"}));
 });
-test("daily snapshots are idempotent, preserve history, tolerate source failures and protect cron",async()=>{
-  const providers=[{name:"good",fetch:async()=>[{title:"India technology policy",provider:"good",url:"https://source.test/",position:1,publishedAt:new Date()}]},{name:"bad",fetch:async()=>{throw new Error("Unavailable");}}];
+test("daily snapshots are idempotent, preserve history, tolerate source failures and protect cron",async(t)=>{
+  await auth(request(app).put("/api/admin/ai/config/trending")).send({...config,model:"trending-model",apiKey:"independent-trend-key"});
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Present in current source coverage",search_keywords:["technology"],article_angle:"Explain the reported development",language_priority:"Hindi"}))})}}]}),{status:200}));
+  const providers=[{name:"good",fetch:async()=>Array.from({length:25},(_,i)=>({title:`India technology policy ${i}`,provider:"good",url:`https://source.test/${i}`,position:i+1,publishedAt:new Date()}))},{name:"bad",fetch:async()=>{throw new Error("Unavailable");}}];
   const first=await refreshTrends("IN",{providers});const again=await refreshTrends("IN",{providers});assert.equal(String(first._id),String(again._id));assert.equal(await TrendingSnapshot.countDocuments({date:trendDate("IN"),country:"IN"}),1);assert.equal(first.sourceHealth[1].status,"unavailable");
   await TrendingSnapshot.create({date:"2020-01-01",country:"IN",topics:[]});
   const cron=await request(app).get("/api/internal/jobs/trending").set("Authorization","Bearer "+env.cronSecret);assert.equal(cron.status,200);
   await TrendingSnapshot.updateOne({_id:first._id},{$set:{lastAttemptAt:new Date(0)}});
   await assert.rejects(refreshTrends("IN",{force:true,providers:[providers[1]]}),/All trend sources/);
-  const retained=await TrendingSnapshot.findById(first._id);assert.equal(retained.topics.length,1);assert.equal(await TrendingSnapshot.countDocuments({date:"2020-01-01"}),1);
+  const retained=await TrendingSnapshot.findById(first._id);assert.equal(retained.topics.length,20);assert.equal(await TrendingSnapshot.countDocuments({date:"2020-01-01"}),1);
   const list=await auth(request(app).get("/api/admin/trending"));assert.equal(list.status,200);assert.equal(list.body.data.lockToken,undefined);
   const detail=await auth(request(app).get("/api/admin/trending/"+retained.topics[0]._id));assert.equal(detail.status,200);
   assert.equal((await auth(request(app).get("/api/admin/trending?date=invalid"))).status,422);
+});
+
+test("independent configurations preserve blank keys and legacy article settings",async(t)=>{
+ const articleBefore=await AiConfig.findOne({singleton:"default"}).select("+encryptedApiKey");
+ const trendBefore=await AiConfig.findOne({singleton:"trending"}).select("+encryptedApiKey");
+ const r=await auth(request(app).put("/api/admin/ai/config/trending")).send({...config,model:"trending-model-2",apiKey:""});assert.equal(r.status,200,JSON.stringify(r.body));
+ assert.equal(decryptSecret((await AiConfig.findOne({singleton:"trending"}).select("+encryptedApiKey")).encryptedApiKey),decryptSecret(trendBefore.encryptedApiKey));
+ const articleAfter=await AiConfig.findOne({singleton:"default"}).select("+encryptedApiKey");assert.equal(articleAfter.encryptedApiKey,articleBefore.encryptedApiKey);assert.equal(articleAfter.model,articleBefore.model);
+ for(const path of ["/api/admin/ai/config","/api/admin/ai/config/article","/api/admin/ai/config/trending"]){const result=await auth(request(app).get(path));assert.equal(result.status,200);assert.equal(result.body.data.outputMode,undefined);assert.equal(result.body.data.apiKey,undefined);assert.equal(result.body.data.encryptedApiKey,undefined);}
+ assert.equal((await auth(request(app).put("/api/admin/ai/config/invalid")).send(config)).status,422);
+ t.mock.method(globalThis,"fetch",async(_url,options)=>{const body=JSON.parse(options.body);assert.equal(body.model,articleBefore.model);assert.equal(options.headers.Authorization,"Bearer "+config.apiKey);return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(draft())}}]}));});
+ const generated=await auth(request(app).post("/api/admin/ai/generate-article")).send({title:"Independent article"});assert.equal(generated.status,200,JSON.stringify(generated.body));assert.equal(generated.body.data.model,articleBefore.model);
+});
+
+test("invalid, expired and revoked access tokens return 401",async()=>{
+ const decoded=jwt.decode(adminToken);
+ const expired=jwt.sign({id:decoded.id,sid:decoded.sid},env.accessSecret,{expiresIn:-1,audience:"trendsduniya-admin",issuer:"trendsduniya"});
+ for(const value of ["invalid",expired])assert.equal((await auth(request(app).get("/api/auth/me"),value)).status,401);
+ const login=await request(app).post("/api/auth/login").send({email:"superadmin@ai-test.test",password:"Test-password-123"});
+ const token=login.body.data.accessToken;await AuthSession.updateOne({_id:jwt.decode(token).sid},{$set:{revokedAt:new Date()}});
+ assert.equal((await auth(request(app).get("/api/auth/me"),token)).status,401);
+ assert.equal((await auth(request(app).get("/api/auth/me"))).status,200);
+});
+
+test("MongoDB expires snapshots after 30 days and keeps recent history",async()=>{
+ const indexes=await TrendingSnapshot.collection.indexes();assert.ok(indexes.some(i=>i.key.createdAt===1&&i.expireAfterSeconds===30*86400));
+ const expired=await TrendingSnapshot.create({date:"2020-02-01",country:"IN",topics:[],createdAt:new Date(Date.now()-31*86400000)});
+ const recent=await TrendingSnapshot.create({date:"2020-02-02",country:"IN",topics:[],createdAt:new Date(Date.now()-29*86400000)});
+ await mongoose.connection.db.admin().command({setParameter:1,ttlMonitorSleepSecs:1});
+ let exists=true;for(let i=0;i<100&&exists;i++){await delay(100);exists=!!await TrendingSnapshot.exists({_id:expired._id});}
+ assert.equal(exists,false);assert.ok(await TrendingSnapshot.exists({_id:recent._id}));
 });
