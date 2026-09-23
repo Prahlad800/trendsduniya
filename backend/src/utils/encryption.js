@@ -1,8 +1,9 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import env from "../config/env.js";
 import { AppError } from "./apiResponse.js";
+const configurationError=message=>Object.assign(new AppError(message,503),{errorCode:"CONFIGURATION_ERROR"});
 function key() {
-  if (!/^[a-f\d]{64}$/i.test(env.aiEncryptionKey || "")) throw new AppError("Configure AI_ENCRYPTION_KEY with 32 random bytes encoded as hex", 503);
+  if (!/^[a-f\d]{64}$/i.test(env.aiEncryptionKey || "")) throw configurationError("Configure AI_ENCRYPTION_KEY with 32 random bytes encoded as hex");
   return Buffer.from(env.aiEncryptionKey, "hex");
 }
 export function encryptSecret(value) {
@@ -18,5 +19,5 @@ export function decryptSecret(value) {
     const cipher = createDecipheriv("aes-256-gcm", secret, Buffer.from(iv, "hex"));
     cipher.setAuthTag(Buffer.from(tag, "hex"));
     return Buffer.concat([cipher.update(Buffer.from(data, "hex")), cipher.final()]).toString("utf8");
-  } catch { throw new AppError("AI credentials could not be decrypted. Re-enter the API key.", 503); }
+  } catch { throw configurationError("AI credentials could not be decrypted. Re-enter the API key."); }
 }

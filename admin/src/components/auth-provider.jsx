@@ -3,7 +3,7 @@ import {createContext,useContext,useState,useEffect,useCallback} from "react";
 import {useRouter,usePathname} from "next/navigation";
 import {apiGet,apiPost} from "../lib/api";
 import {Loading,Notice} from "./ui";
-import {loginPath,safeReturnPath,expireSession} from "../lib/session-state.mjs";
+import {loginPath,safeReturnPath,expireSession,checkSessionExpiry} from "../lib/session-state.mjs";
 const AuthContext=createContext(null);
 export const useAuth=()=>useContext(AuthContext);
 export function AuthProvider({children}){
@@ -14,21 +14,22 @@ export function AuthProvider({children}){
   catch(e){setAdmin(null);if(e.status!==401)setError(e.message);}
   finally{setLoading(false);}
  },[]);
- useEffect(()=>{const controller=new AbortController();
-  apiGet("/auth/me",{signal:controller.signal})
-   .then(r=>{if(!controller.signal.aborted){setAdmin(r.data);setError("");}})
-   .catch(e=>{if(controller.signal.aborted||e?.name==="AbortError")return;if(e.status!==401)setError(e.message);})
-   .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
-  return()=>controller.abort();
+ useEffect(()=>{let active=true;
+  apiGet("/auth/me")
+   .then(r=>{if(active){setAdmin(r.data);setError("");}})
+   .catch(e=>{if(!active||e?.name==="AbortError")return;if(e.status!==401)setError(e.message);})
+   .finally(()=>{if(active)setLoading(false);});
+  return()=>{active=false;};
  },[]);
  useEffect(()=>{const expire=()=>{setAdmin(null);setError("");router.replace(loginPath());};window.addEventListener("session-expired",expire);return()=>window.removeEventListener("session-expired",expire);},[router]);
  useEffect(()=>{if(!loading&&!admin&&!error&&pathname!=="/login")router.replace(loginPath());},[loading,admin,error,pathname,router]);
  useEffect(()=>{
   if(!admin)return;
   let pending=false;
-  const check=async()=>{if(pending||document.visibilityState==="hidden")return;pending=true;try{await apiGet("/auth/me");}catch{}finally{pending=false;}};
+  const check=async()=>{if(checkSessionExpiry()||pending||document.visibilityState==="hidden")return;pending=true;try{await apiGet("/auth/me");}catch(e){if(e.status===401)expireSession();}finally{pending=false;}};
   const timer=setInterval(check,60000);window.addEventListener("focus",check);
-  return()=>{clearInterval(timer);window.removeEventListener("focus",check);};
+  document.addEventListener("visibilitychange",check);
+  return()=>{clearInterval(timer);window.removeEventListener("focus",check);document.removeEventListener("visibilitychange",check);};
  },[admin]);
  const login=async(values)=>{const r=await apiPost("/auth/login",values);setAdmin(r.data.admin);setError("");router.replace(safeReturnPath(new URLSearchParams(window.location.search).get("next")));};
  const logout=async()=>{try{await apiPost("/auth/logout");}finally{expireSession();setAdmin(null);router.replace("/login");}};

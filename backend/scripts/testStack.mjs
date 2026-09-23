@@ -7,6 +7,7 @@ import net from "node:net";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import app from "../src/app.js";
 import env from "../src/config/env.js";
@@ -83,6 +84,15 @@ try{
   await cms(`/admin/trending/${trends.data.topics[0]._id}/start-article`,"POST",{});
   for(const path of ["/setup-ai","/trending","/articles/new"]){const r=await originalFetch(`http://127.0.0.1:${adminPort}${path}`);assert.equal(r.status,200,path);checks++;}
   for(const path of ["/","/latest","/categories","/authors","/search?q=test","/saved","/about","/robots.txt","/sitemap.xml"]){const r=await originalFetch(`http://127.0.0.1:${frontPort}${path}`,{signal:AbortSignal.timeout(15000)});assert.equal(r.status,200,path);checks++;}
+  // Expired access tokens must reach the client as 401 even with a valid refresh cookie.
+  const access=cookies.match(/td_access=([^;]+)/)[1],decoded=jwt.decode(access);
+  const expired=jwt.sign({id:decoded.id,sid:decoded.sid},env.accessSecret,{expiresIn:-1,audience:'trendsduniya-admin',issuer:'trendsduniya'});
+  cookies=cookies.replace(/td_access=[^;]+/,`td_access=${expired}`);
+  await cms('/auth/me','GET',undefined,401);
+  assert.ok(!cookies.match(/td_access=[^;]/));
+  await cms('/auth/login','POST',{email:'stack@example.test',password:'Test-only-password-123'});
+  const sessionResponse=await originalFetch(`http://127.0.0.1:${adminPort}/api/cms/auth/me`,{headers:{Cookie:cookies}});
+  assert.equal(sessionResponse.status,200);assert.ok(Number(sessionResponse.headers.get('X-Session-Expires-At'))>Date.now());checks++;
   await cms("/auth/logout","POST",{});
   await new Promise(resolve=>server.close(resolve));server=null;
   const offline=await cms("/health","GET",undefined,503);assert.ok(offline.message.includes("Start the backend"));

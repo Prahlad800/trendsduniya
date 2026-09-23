@@ -48,7 +48,7 @@ export async function saveConfig(input,admin,type="article") {
 }
 export async function testConfig(input,type="article") {
   const config=await prepareConfig(input,type), start=Date.now();
-  const same={...configKey(type),provider:config.provider,model:config.model,baseUrl:config.baseUrl,encryptedApiKey:config.encryptedApiKey};
+  const same={...configKey(type),...Object.fromEntries(["provider","model","baseUrl","encryptedApiKey","temperature","maxTokens","enabled"].map(k=>[k,config[k]]))};
   try {
     await callProvider({...config,maxTokens:1024},decryptSecret(config.encryptedApiKey),"Follow the user instruction.","Reply only with OK");
     await AiConfig.updateOne(same,{$set:{lastTestedAt:new Date(),lastTestStatus:"connected",lastTestMessage:"Connected successfully"}});
@@ -98,7 +98,7 @@ export async function generateArticle(input) {
   let response=await callProvider(config,key,system,JSON.stringify(context),schema,signal), article;
   try{article=parseGenerated(response.text,context);}catch{
     response=await callProvider(config,key,system,JSON.stringify({...context,repairInstruction:"Previous output failed validation. Return a complete valid JSON object using the schema; do not add extra fields."}),schema,signal);
-    try{article=parseGenerated(response.text,context);}catch{throw new AppError("AI returned an invalid article. Your existing content has not been changed.",502);}
+    try{article=parseGenerated(response.text,context);}catch{throw Object.assign(new AppError("AI returned an invalid article. Your existing content has not been changed.",502),{errorCode:"INVALID_RESPONSE",provider:config.provider,model:config.model});}
   }
   const normalize=value=>value.normalize("NFKC").trim().toLowerCase();
   article.suggestedCategory=categories.find(c=>normalize(c.name)===normalize(article.articleSection))?._id?.toString()||null;

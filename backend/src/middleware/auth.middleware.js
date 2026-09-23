@@ -25,11 +25,9 @@ export const authenticate = async (req, res, next) => {
     req.authSession = session;
     next();
   } catch (error) {
-    next(
-      error.statusCode
-        ? error
-        : new AppError("Invalid or expired session", 401),
-    );
+    next(["TokenExpiredError","JsonWebTokenError","NotBeforeError"].includes(error.name)
+      ? new AppError("Invalid or expired session",401)
+      : error);
   }
 };
 export const signAccessToken = (id, sid) =>

@@ -38,7 +38,7 @@ export async function selectTrendingTopics(candidates,{country,date,now}) {
   for(let attempt=0;attempt<2;attempt++) {
     const response=await callProvider(config,key,system,JSON.stringify({...context,...(attempt?{repairInstruction:"Return exactly 20 unique valid candidate IDs with every required field. Previous output failed validation."}:{})}),schema,signal);
     try{return {topics:parseTrendSelection(response.text,candidates),provider:config.provider,model:config.model};}catch{
-      if(attempt)throw new AppError("AI response did not contain 20 distinct sourced topics. Existing history is preserved.",502);
+      if(attempt)throw Object.assign(new AppError("AI response did not contain 20 distinct sourced topics. Existing history is preserved.",502),{errorCode:"INVALID_RESPONSE",provider:config.provider,model:config.model});
     }
   }
 }

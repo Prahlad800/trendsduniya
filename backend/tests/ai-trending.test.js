@@ -76,6 +76,36 @@ test("adapters use provider-specific request contracts",()=>{
   const gemini=adapters.gemini.build({...config,baseUrl:"https://example.test",model:"gemini-model"},"key","system","user",{});assert.equal(gemini.headers["x-goog-api-key"],"key");assert.equal(gemini.body.generationConfig.responseMimeType,"application/json");
   const anthropic=adapters.anthropic.build({...config,baseUrl:"https://example.test"},"key","system","user");assert.equal(anthropic.body.system,"system");assert.equal(anthropic.headers["anthropic-version"],"2023-06-01");
 });
+
+test("testing edited settings never updates the saved configuration status",async(t)=>{
+ await AiConfig.updateOne({singleton:'default'},{$set:{lastTestStatus:'untested'}});
+ t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({choices:[{message:{content:'OK'}}]})));
+ const result=await auth(request(app).post('/api/admin/ai/test')).send({...config,temperature:0.7});
+ assert.equal(result.status,200);assert.equal((await AiConfig.findOne({singleton:'default'})).lastTestStatus,'untested');
+ assert.equal((await AiConfig.findOne({singleton:'default'})).temperature,config.temperature);
+});
+
+test("missing encryption key returns CONFIGURATION_ERROR without persisting",async()=>{
+ const original=env.aiEncryptionKey;env.aiEncryptionKey='';
+ try{const result=await auth(request(app).put('/api/admin/ai/config')).send(config);assert.equal(result.status,503);assert.equal(result.body.errorCode,'CONFIGURATION_ERROR');}
+ finally{env.aiEncryptionKey=original;}
+});
+
+test("CORS allows configured origins and denies other origins",async()=>{
+ const result=await request(app).options('/api/admin/ai/test').set('Origin',env.corsOrigins[0]).set('Access-Control-Request-Method','POST');
+ assert.equal(result.status,204);assert.equal(result.headers['access-control-allow-origin'],env.corsOrigins[0]);assert.equal(result.headers['access-control-allow-credentials'],'true');
+ assert.equal((await request(app).options('/api/admin/ai/test').set('Origin','https://untrusted.test').set('Access-Control-Request-Method','POST')).status,403);
+});
+
+test("invalid JSON never echoes credential-bearing input",async()=>{
+ const response=await auth(request(app).post('/api/admin/ai/test')).set('Content-Type','application/json').send('{"apiKey":"private-value",BROKEN}');
+ assert.equal(response.status,400);assert.equal(response.body.message,'Invalid JSON request body');assert.ok(!JSON.stringify(response.body).includes('private-value'));
+});
+
+test("database failures during authentication return 503 rather than expiring the session",async(t)=>{
+ t.mock.method(AuthSession,'findOne',()=>{throw Object.assign(new Error('private connection detail'),{name:'MongoNetworkError'});});
+ const response=await auth(request(app).get('/api/auth/me'));assert.equal(response.status,503);assert.equal(response.body.errorCode,'DATABASE_ERROR');assert.ok(!JSON.stringify(response.body).includes('private connection detail'));
+});
 test("JSON contract removes unsafe HTML, disallows media, and rejects invented links",()=>{
   const data=draft();data.content+='<script>alert(1)</script><img src="https://invented.test/image"><a href="https://invented.test">Link</a>';
   data.externalLinks=[{title:"Invented",anchorText:"Invented",url:"https://invented.test"},{title:"Supplied",anchorText:"Supplied",url:"https://supplied.test/"}];
@@ -158,4 +188,25 @@ test("MongoDB expires snapshots after 30 days and keeps recent history",async()=
  await mongoose.connection.db.admin().command({setParameter:1,ttlMonitorSleepSecs:1});
  let exists=true;for(let i=0;i<100&&exists;i++){await delay(100);exists=!!await TrendingSnapshot.exists({_id:expired._id});}
  assert.equal(exists,false);assert.ok(await TrendingSnapshot.exists({_id:recent._id}));
+});
+
+test("all six providers support isolated test, encrypted save, reload and article generation with mocked HTTP",async(t)=>{
+ await RequestQuota.deleteMany({});env.aiCustomHosts=['approved-provider.test'];
+ for(const provider of Object.keys(adapters)){
+  const model=provider==='gemini'?'models/test-model':'test-model';
+  const input={provider,model,apiKey:'fixture-key-not-real',baseUrl:provider==='custom'?'https://approved-provider.test/v1':'',temperature:0.4,maxTokens:4096,enabled:true};
+  let requests=0;t.mock.method(globalThis,'fetch',async(_url,options)=>{
+   const body=JSON.parse(options.body),probe=provider==='gemini'?body.contents[0].parts[0].text==='Reply only with OK':body.messages.at(-1).content==='Reply only with OK';
+   requests++;const text=probe?'OK':JSON.stringify(draft());
+   const payload=provider==='gemini'?{candidates:[{content:{parts:[{text}]},finishReason:'STOP'}]}:provider==='anthropic'?{content:[{type:'text',text}],stop_reason:'end_turn'}:{choices:[{message:{content:text},finish_reason:'stop'}]};
+   return new Response(JSON.stringify(payload));
+  });
+  const before=await AiConfig.findOne({singleton:'default'}).lean();
+  const probe=await auth(request(app).post('/api/admin/ai/config/article/test')).send(input);assert.equal(probe.status,200,JSON.stringify(probe.body));
+  const after=await AiConfig.findOne({singleton:'default'}).lean();assert.equal(after.provider,before.provider);assert.equal(after.model,before.model);
+  const saved=await auth(request(app).put('/api/admin/ai/config/article')).send(input);assert.equal(saved.status,200);
+  const loaded=await auth(request(app).get('/api/admin/ai/config/article'));assert.equal(loaded.body.data.provider,provider);assert.equal(loaded.body.data.model,model);assert.equal(loaded.body.data.apiKeyConfigured,true);assert.ok(!JSON.stringify(loaded.body).includes(input.apiKey));
+  const generated=await auth(request(app).post('/api/admin/ai/generate-article')).send({title:'Provider matrix story',targetWords:300});assert.equal(generated.status,200,JSON.stringify(generated.body));assert.equal(generated.body.data.provider,provider);assert.equal(generated.body.data.article.title,draft().title);assert.equal(requests,2);
+  globalThis.fetch.mock.restore();
+ }
 });

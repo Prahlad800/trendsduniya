@@ -1,22 +1,31 @@
-import {sessionExpired,sessionSignal,expireSession,resetSession} from "./session-state.mjs";
+import {sessionExpired,sessionSignal,expireSession,resetSession,setSessionExpiry,checkSessionExpiry} from "./session-state.mjs";
 export class ApiError extends Error { constructor(message,status,errors){super(message);this.status=status;this.errors=errors;} }
 async function request(path,options={}){
  const authAction=path==="/auth/login"||path==="/auth/logout";
+ if(!authAction)checkSessionExpiry();
  if(sessionExpired()&&!authAction)throw new ApiError("Session expired. Please sign in.",401);
  const headers=new Headers(options.headers);
  if(options.body&&!(options.body instanceof FormData))headers.set("Content-Type","application/json");
  let response;
- const signal=authAction?options.signal:options.signal?AbortSignal.any([options.signal,sessionSignal()]):sessionSignal();
+ const deadline=AbortSignal.timeout(/^\/admin\/(ai|trending)(\/|$)/.test(path)?285000:35000);
+ const signal=AbortSignal.any([deadline,...(!authAction?[sessionSignal()]:[]),...(options.signal?[options.signal]:[])]);
  try{response=await fetch(`/api/cms${path}`,{...options,signal,headers,cache:"no-store"});}catch(error){
   if(error?.name==="AbortError")throw error;
+  if(deadline.aborted||error?.name==="TimeoutError")throw new ApiError("Request timed out. Please try again.",408);
   throw new ApiError("Unable to connect. Check your connection and try again.",0);
  }
- const payload=await response.json().catch(()=>({}));
+ let payload;
+ try{payload=await response.json();}catch{
+  if(signal.aborted){if(deadline.aborted)throw new ApiError("Request timed out. Please try again.",408);signal.throwIfAborted();}
+ }
+ const valid=payload!==null&&typeof payload==="object"&&!Array.isArray(payload);
  if(!response.ok){
   if(response.status===401&&path!=="/auth/login")expireSession();
-  const error=new ApiError(payload.message||"Request failed",response.status,payload.errors);error.errorCode=payload.errorCode;throw error;
+  const error=new ApiError(valid&&typeof payload.message==="string"?payload.message:"The CMS request failed. Please try again.",response.status,valid?payload.errors:undefined);error.errorCode=valid?payload.errorCode:undefined;throw error;
  }
+ if(!valid||payload.success===false)throw new ApiError("The CMS returned an invalid response. Please try again.",502);
  if(path==="/auth/login")resetSession();
+ setSessionExpiry(response.headers.get("X-Session-Expires-At"));
  return payload;
 }
 export const apiGet=(path,options)=>request(path,options);
