@@ -1,12 +1,14 @@
 import "dotenv/config";
 
 const env = {
-  aiEncryptionKey: process.env.AI_ENCRYPTION_KEY || "",
+  gemini: {
+    apiKey: (process.env.GEMINI_API_KEY || "").trim(),
+    model: (process.env.GEMINI_MODEL || "").trim(),
+  },
   cronSecret: process.env.CRON_SECRET || "",
   aiTimeoutMs: Math.min(240000, Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 240000)),
   aiGenerationLimit: Math.max(1, Number(process.env.AI_GENERATION_LIMIT) || 10),
   trendRefreshHours: Math.min(24, Math.max(1, Number(process.env.TREND_REFRESH_HOURS) || 24)),
-  aiCustomHosts: (process.env.AI_CUSTOM_HOSTS || "").split(",").map(v => v.trim().toLowerCase()).filter(Boolean),
   port: Number(process.env.PORT || 5000),
   nodeEnv: process.env.NODE_ENV || "development",
   mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/trendsduniya",

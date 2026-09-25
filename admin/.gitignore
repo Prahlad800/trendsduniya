@@ -42,3 +42,6 @@ next-env.d.ts
 
 AGENTS.md 
 CLAUDE.md
+# Keep environment secrets local; commit templates only.
+.env*
+!.env.example

@@ -5,3 +5,6 @@ coverage/
 AGENTS.md 
 CLAUDE.md
 docs
+# Keep environment secrets local; commit templates only.
+.env*
+!.env.example

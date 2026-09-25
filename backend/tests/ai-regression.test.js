@@ -1,79 +1,17 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {callProvider} from "../src/services/ai/transport.js";
 import {parseTrendSelection} from "../src/services/trending/aiRanking.service.js";
 import {parseGenerated,editorialPrompt} from "../src/services/ai/ai.service.js";
 import {rankTrends} from "../src/services/trending/trendRanking.service.js";
 import {mergeAiDraft} from "../../admin/src/lib/ai-draft.mjs";
 import {blankArticle} from "../../admin/src/lib/article-form.mjs";
-import {safeReturnPath,resetSession,sessionExpired,setSessionExpiry,checkSessionExpiry,sessionSignal} from "../../admin/src/lib/session-state.mjs";
+import {safeReturnPath,resetSession,sessionExpired,setSessionExpiry,checkSessionExpiry,sessionSignal,expireSession} from "../../admin/src/lib/session-state.mjs";
 import {apiGet,apiPost} from "../../admin/src/lib/api.js";
 import {trendProviders} from "../src/services/trending/providers/index.js";
-import {adapters} from "../src/services/ai/providers/index.js";
-import {diagnoseProvider} from "../src/services/ai/transport.js";
 
-const config={provider:"openai",model:"test-model",baseUrl:"https://provider.test/v1",temperature:0.4,maxTokens:24000};
-const ok=text=>new Response(JSON.stringify({choices:[{message:{content:text}}]}));
 const selection=()=>({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Current coverage",search_keywords:["policy"],article_angle:"Explain the update",language_priority:"Hindi"}))});
 const candidates=()=>rankTrends(Array.from({length:25},(_,i)=>({title:`Policy number ${i}`,provider:"news",url:`https://source.test/${i}`,position:i+1,publishedAt:new Date()})),new Date(),120);
 const article=()=>({title:"Verified policy",slug:"verified-policy",excerpt:"A policy update.",summary:"Policy context.",content:"<p>Policy update.</p>",articleType:"news",articleSection:"Technology",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Policy context",primaryKeyword:"policy",relatedKeywords:[],relatedTopics:[],metaTitle:"Policy update",metaDescription:"A policy update."},suggestedTags:[],editorialNotes:"Verify before publication."});
-
-test("all six providers return text and use the requested model and credential",async(t)=>{
- for(const provider of Object.keys(adapters)){
-  t.mock.method(globalThis,"fetch",async(url,options)=>{
-   const body=JSON.parse(options.body);assert.equal(options.redirect,"error");
-   if(provider==="gemini"){
-    assert.ok(url.endsWith('/models/test-model:generateContent'));assert.equal(options.headers['x-goog-api-key'],'private-key');
-    assert.deepEqual(body.contents,[{role:'user',parts:[{text:'u'}]}]);
-    return new Response(JSON.stringify({candidates:[{content:{parts:[{thought:true,text:'internal reasoning'},{text:'OK'}]},finishReason:'STOP'}]}));
-   }
-   assert.equal(body.model,'test-model');
-   if(provider==='anthropic'){
-    assert.equal(options.headers['x-api-key'],'private-key');assert.equal(body.system,'s');
-    return new Response(JSON.stringify({content:[{type:'thinking',thinking:'internal reasoning'},{type:'text',text:'OK'}],stop_reason:'end_turn'}));
-   }
-   assert.equal(options.headers.Authorization,'Bearer private-key');return ok('OK');
-  });
-  assert.equal((await callProvider({...config,provider,model:provider==='gemini'?'models/test-model':'test-model'},'private-key','s','u')).text,'OK');
-  globalThis.fetch.mock.restore();
- }
-});
-
-test("permanent quotas and errors inside HTTP 200 are classified without retry",async(t)=>{
- for(const [status,payload,code] of [[402,{error:{message:'insufficient credits private-key'}},'QUOTA_EXCEEDED'],[429,{error:{type:'insufficient_quota'}},'QUOTA_EXCEEDED'],[200,{error:{code:401,message:'private-key'}},'INVALID_API_KEY']]){
-  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(JSON.stringify(payload),{status});});
-  await assert.rejects(callProvider(config,'private-key','s','u'),e=>e.errorCode===code&&!e.message.includes('private-key'));assert.equal(calls,1);globalThis.fetch.mock.restore();
- }
- assert.equal(diagnoseProvider(config,400,{error:{message:'context length exceeded'}}).errorCode,'TOKEN_LIMIT');
-});
-
-test("malformed successful payloads and blocked output fail without repeated billing",async(t)=>{
- for(const [provider,body] of [['gemini','null'],['gemini','{"candidates":[{"content":{"parts":{}}}]}'],['anthropic','{"content":{}}'],['openai','<html>Bad gateway</html>'],['openai','{"choices":[{"message":{"content":"partial"},"finish_reason":"content_filter"}]}']]){
-  let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response(body);});
-  await assert.rejects(callProvider({...config,provider},'private-key','s','u'),e=>e.errorCode==='INVALID_RESPONSE');assert.equal(calls,1);globalThis.fetch.mock.restore();
- }
-});
-
-test("token compatibility adapts only the named rejected field and never oscillates",async(t)=>{
- const bodies=[];t.mock.method(globalThis,'fetch',async(_url,options)=>{
-  const body=JSON.parse(options.body);bodies.push(body);
-  return new Response(JSON.stringify({error:{code:'unsupported_parameter',param:bodies.length===1?'max_completion_tokens':'max_tokens',message:bodies.length===1?"Unsupported parameter: 'max_completion_tokens'. Use 'max_tokens' instead.":"Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead."}}),{status:400});
- });
- await assert.rejects(callProvider(config,'key','s','u'),e=>e.errorCode==='UNSUPPORTED_PARAMETER');assert.equal(bodies.length,2);assert.equal(bodies[1].max_tokens,config.maxTokens);
-});
-
-test("long Retry-After is not shortened into an immediate retry",async(t)=>{
- let calls=0;t.mock.method(globalThis,'fetch',async()=>{calls++;return new Response('{}',{status:429,headers:{'Retry-After':'60'}});});
- await assert.rejects(callProvider(config,'key','s','u'),e=>e.errorCode==='RATE_LIMITED');assert.equal(calls,1);
-});
-
-test("Gemini model unavailable is an outage, not an invalid model, and retries",async(t)=>{
- let calls=0;t.mock.method(globalThis,'fetch',async()=>{
-  calls++;return calls===1?new Response(JSON.stringify({error:{code:503,status:'UNAVAILABLE',message:'This model is currently unavailable due to high demand.'}}),{status:503}):new Response(JSON.stringify({candidates:[{content:{parts:[{text:'OK'}]},finishReason:'STOP'}]}));
- });
- assert.equal(diagnoseProvider(config,503,{error:{message:'This model is currently unavailable due to high demand.'}}).errorCode,'PROVIDER_UNAVAILABLE');
- assert.equal((await callProvider({...config,provider:'gemini'},'key','s','u')).text,'OK');assert.equal(calls,2);
-});
 
 test("login expiry schedules one redirect event and cancels pending requests",async(t)=>{
  resetSession();const previousWindow=globalThis.window;globalThis.window=new EventTarget();
@@ -98,37 +36,6 @@ test("CMS client rejects malformed successes and reports HTTP failures safely",a
  }
 });
 
-test("unsupported request features adapt without changing model or key",async(t)=>{
- const bodies=[];
- t.mock.method(globalThis,"fetch",async(_url,options)=>{
-  assert.equal(options.headers.Authorization,"Bearer private-key");bodies.push(JSON.parse(options.body));
-  return bodies.length===1?new Response(JSON.stringify({error:{message:"Unsupported parameter: temperature"}}),{status:400}):bodies.length===2?new Response(JSON.stringify({error:{message:"response_format is not supported"}}),{status:400}):ok("{}");
- });
- assert.equal((await callProvider(config,"private-key","JSON","JSON",{})).text,"{}");
- assert.equal(bodies.length,3);assert.equal(bodies[1].temperature,undefined);assert.equal(bodies[2].response_format,undefined);
- assert.ok(bodies.every(b=>b.model===config.model&&b.max_completion_tokens===24000));
-});
-test("Gemini compatibility fallback and provider errors never echo secrets",async(t)=>{
- let count=0;
- t.mock.method(globalThis,"fetch",async(_url,options)=>{
-  assert.equal(options.headers["x-goog-api-key"],"private-key");const body=JSON.parse(options.body);
-  if(++count===1)return new Response(JSON.stringify({error:{message:"responseMimeType is not supported"}}),{status:400});
-  assert.equal(body.generationConfig.responseMimeType,undefined);
-  return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"{}"}]}}]}));
- });
- assert.equal((await callProvider({...config,provider:"gemini"},"private-key","JSON","JSON",{})).text,"{}");
- globalThis.fetch.mock.restore();
- for(const [status,errorCode] of [[401,"INVALID_API_KEY"],[403,"ACCESS_DENIED"],[404,"MODEL_NOT_FOUND"],[400,"INVALID_REQUEST"]]){
-  let calls=0;t.mock.method(globalThis,"fetch",async()=>{calls++;return new Response(JSON.stringify({error:{message:"private-key and sensitive prompt"}}),{status});});
-  await assert.rejects(callProvider(config,"private-key","s","u"),e=>e.errorCode===errorCode&&!e.message.includes("private-key"));assert.equal(calls,1);globalThis.fetch.mock.restore();
- }
-});
-test("rate limiting is bounded and truncation is actionable",async(t)=>{
- let calls=0;t.mock.method(globalThis,"fetch",async()=>{calls++;return new Response("{}",{status:429});});
- await assert.rejects(callProvider(config,"secret","s","u"),e=>e.errorCode==="RATE_LIMITED");assert.equal(calls,3);
- globalThis.fetch.mock.restore();t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({choices:[{message:{content:"partial"},finish_reason:"length"}]})));
- await assert.rejects(callProvider(config,"secret","s","u"),e=>e.errorCode==="OUTPUT_TRUNCATED");
-});
 test("trending selection enforces 20 distinct source-backed candidates",()=>{
  const input=selection(),source=candidates();const result=parseTrendSelection("Result:\n"+JSON.stringify(input),source);
  assert.equal(result.length,20);assert.ok(result.every((topic,i)=>topic.rank===i+1&&topic.sourceCount===1&&source.some(s=>s.title===topic.title&&s.sources[0].url===topic.sources[0].url)));
@@ -163,6 +70,37 @@ test("expired sessions stop requests, login resets state and role 403 stays sign
 test("login return paths reject external redirects and loops",()=>{
  for(const value of ["//evil.test","https://evil.test","/\\evil.test","/login?next=/","/api/cms/auth","javascript:alert(1)","/\n/evil.test"])assert.equal(safeReturnPath(value),"/");
  assert.equal(safeReturnPath("/articles/new?trend=story"),"/articles/new?trend=story");
+});
+
+test("session cancellation during fetch or body reading becomes a handled 401",async(t)=>{
+ for(const duringBody of [false,true]){
+  resetSession();
+  let started;
+  const ready=new Promise(resolve=>{started=resolve;});
+  t.mock.method(globalThis,"fetch",async(_url,{signal})=>{
+   const pending=()=>new Promise((_resolve,reject)=>{
+    signal.addEventListener("abort",()=>reject(signal.reason),{once:true});started();
+   });
+   return duringBody?{ok:true,headers:new Headers(),json:pending}:pending();
+  });
+  const checked=assert.rejects(apiGet("/admin/articles"),error=>error.status===401&&error.name!=="AbortError");
+  await ready;expireSession();await checked;
+  globalThis.fetch.mock.restore();
+ }
+ resetSession();
+});
+
+test("parallel session probes finish without aborting or restoring an expired session",async(t)=>{
+ resetSession();t.after(resetSession);
+ let release,probeSignal;
+ t.mock.method(globalThis,"fetch",async(_url,{signal})=>{
+  probeSignal=signal;
+  return new Promise(resolve=>{release=resolve;});
+ });
+ const checked=assert.rejects(apiGet("/auth/me"),error=>error.status===401);
+ expireSession();assert.equal(probeSignal.aborted,false);
+ release(new Response('{"success":true,"data":{"name":"Stale session"}}'));
+ await checked;assert.equal(sessionExpired(),true);
 });
 
 test("RSS redirects stay on the original HTTPS origin and RSS path",async(t)=>{

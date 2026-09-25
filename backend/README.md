@@ -401,3 +401,7 @@ npm run create:admin -- "Main Admin" admin@example.com "Admin@123456" superadmin
 npm test
 npm run lint
 ```
+
+## Central Gemini service
+
+Use Node.js 22 or later. All AI features call `src/services/gemini.service.js`, using Google's generateContent API with native fetch. Set `GEMINI_API_KEY` and `GEMINI_MODEL` separately in backend/.env and restart the server. Keys remain server-side. Edit article instructions in `src/services/ai/prompt.js` and trending instructions in `src/services/trending/prompt.js`. See [AI setup](../AI-TRENDS.md).

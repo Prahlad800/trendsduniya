@@ -6,6 +6,5 @@ export { default as Article } from "./Article.js";
 export { default as ArticleRevision } from "./ArticleRevision.js";
 export { default as AuditLog } from "./AuditLog.js";
 export { default as ArticleRedirect } from "./ArticleRedirect.js";
-export { default as AiConfig } from "./AiConfig.js";
 export { default as TrendingSnapshot } from "./TrendingSnapshot.js";
 export { default as RequestQuota } from "./RequestQuota.js";

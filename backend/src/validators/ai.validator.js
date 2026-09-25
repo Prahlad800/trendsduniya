@@ -1,17 +1,5 @@
 import { z } from "zod";
 import { articleInput } from "./article.validator.js";
-export const providerDefaults = {
-  openai: "https://api.openai.com/v1", openrouter: "https://openrouter.ai/api/v1",
-  gemini: "https://generativelanguage.googleapis.com/v1beta", groq: "https://api.groq.com/openai/v1",
-  anthropic: "https://api.anthropic.com/v1", custom: "",
-};
-export const configInput = z.object({
-  provider: z.enum(Object.keys(providerDefaults)), providerName: z.string().trim().max(100).default(""),
-  model: z.string().trim().min(1).max(150).regex(/^[\w./:-]+$/),
-  apiKey: z.preprocess(v=>v===""?undefined:v,z.string().trim().min(8).max(1000).optional()), baseUrl: z.string().max(500).default(""),
-  temperature: z.number().min(0).max(1).default(0.4), maxTokens: z.number().int().min(256).max(64000).default(16000),
-  outputMode: z.enum(["json", "schema", "prompt"]).default("json"), enabled: z.boolean().default(true),
-}).strict();
 const text = max => z.string().trim().max(max);
 export const generationInput = z.object({
   title: text(300).min(1), language: z.enum(["en-IN", "hi-IN", "en", "hi"]).default("en-IN"),

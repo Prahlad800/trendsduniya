@@ -6,15 +6,11 @@ import request from "supertest";
 import app from "../src/app.js";
 import env from "../src/config/env.js";
 import Admin from "../src/models/Admin.js";
-import AiConfig from "../src/models/AiConfig.js";
 import TrendingSnapshot from "../src/models/TrendingSnapshot.js";
 import RequestQuota from "../src/models/RequestQuota.js";
 import AuditLog from "../src/models/AuditLog.js";
 import Article from "../src/models/Article.js";
-import {encryptSecret,decryptSecret} from "../src/utils/encryption.js";
-import {parseGenerated,publicConfig} from "../src/services/ai/ai.service.js";
-import {adapters} from "../src/services/ai/providers/index.js";
-import {callProvider} from "../src/services/ai/transport.js";
+import {parseGenerated} from "../src/services/ai/ai.service.js";
 import {normalizeTrend,sameTopic,rankTrends} from "../src/services/trending/trendRanking.service.js";
 import {refreshTrends,trendDate,queryDate} from "../src/services/trending/trending.service.js";
 import {blankArticle,toPayload,fromArticle} from "../../admin/src/lib/article-form.mjs";
@@ -24,81 +20,28 @@ import AuthSession from "../src/models/AuthSession.js";
 import {setTimeout as delay} from "node:timers/promises";
 let db,adminToken,editorToken,authorToken;
 const auth=(r,t=adminToken)=>r.set("Authorization","Bearer "+t);
-const config={provider:"openrouter",model:"openai/gpt-5-mini",apiKey:"test-secret-key-not-real",temperature:0.4,maxTokens:5000,outputMode:"json",enabled:true};
 const draft=()=>({title:"A supplied headline",slug:"a-supplied-headline",excerpt:"A draft awaiting verification.",summary:"Verify the announcement.",content:"<p>The supplied headline requires verification before publication.</p>",articleType:"news",articleSection:"Technology",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Understand the supplied headline",primaryKeyword:"headline",relatedKeywords:[],relatedTopics:[],metaTitle:"A supplied headline",metaDescription:"A draft awaiting independent confirmation."},faq:[],internalLinks:[],externalLinks:[],suggestedTags:["Technology"],editorialNotes:"Verify source documents before publishing."});
 before(async()=>{
-  env.aiEncryptionKey="ab".repeat(32);env.cronSecret="test-cron-secret";
+  env.gemini={apiKey:"test-secret-key-not-real",model:"test-model"};env.cronSecret="test-cron-secret";
   db=await MongoMemoryReplSet.create({instanceOpts:[{launchTimeout:60000}],replSet:{count:1},binary:{version:"7.0.14"}});
   env.mongoUri=db.getUri();
   await mongoose.connect(env.mongoUri);
-  await Promise.all([AiConfig.init(),TrendingSnapshot.init(),RequestQuota.init(),Article.init()]);
+  await Promise.all([TrendingSnapshot.init(),RequestQuota.init(),Article.init()]);
   const tokens=[];
   for(const role of ["superadmin","editor","author"]){const email=`${role}@ai-test.test`;await Admin.create({name:role,email,password:"Test-password-123",role});const r=await request(app).post("/api/auth/login").send({email,password:"Test-password-123"});assert.equal(r.status,200);tokens.push(r.body.data.accessToken);}
   [adminToken,editorToken,authorToken]=tokens;
 });
 after(async()=>{await mongoose.disconnect();await db?.stop();});
-test("authenticated encryption rejects tampering and uses random IVs",()=>{
-  const value=encryptSecret("secret");assert.equal(decryptSecret(value),"secret");assert.notEqual(value,encryptSecret("secret"));
-  const parts=value.split(":");parts[2]="00".repeat(16);assert.throws(()=>decryptSecret(parts.join(":")));
-  assert.equal(JSON.stringify(publicConfig({encryptedApiKey:value,apiKeyConfigured:true})).includes(value),false);
-});
-test("AI and trending endpoints authenticate and config changes require admin",async()=>{
-  for(const path of ["/api/admin/ai/config","/api/admin/ai/status","/api/admin/trending","/api/admin/trending/history"])assert.equal((await request(app).get(path)).status,401);
-  assert.equal((await auth(request(app).put("/api/admin/ai/config"),editorToken).send(config)).status,403);
-  assert.equal((await auth(request(app).get("/api/admin/ai/config"),editorToken)).status,403);
-  assert.equal((await auth(request(app).post("/api/admin/ai/generate-article"),authorToken).send({title:"A story"})).status,403);
-  assert.equal((await request(app).post("/api/internal/jobs/trending")).status,401);
-  assert.equal((await auth(request(app).post("/api/admin/ai/generate-article"),editorToken).send({title:"A story"})).status,409);
-});
-test("AI config validates, encrypts and never returns credentials",async()=>{
-  assert.equal((await auth(request(app).put("/api/admin/ai/config")).send({...config,maxTokens:-1})).status,422);
-  const rejected=await auth(request(app).put("/api/admin/ai/config")).send({...config,apiKey:123});assert.equal(rejected.status,422);assert.ok(!JSON.stringify(rejected.body).includes('"input"'));
-  assert.equal((await auth(request(app).put("/api/admin/ai/config")).send({...config,provider:"custom",baseUrl:"http://127.0.0.1"})).status,422);
-  const r=await auth(request(app).put("/api/admin/ai/config")).send(config);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.data.apiKeyConfigured,true);
-  assert.ok(!JSON.stringify(r.body).includes(config.apiKey));
-  const saved=await AiConfig.findOne().select("+encryptedApiKey");assert.notEqual(saved.encryptedApiKey,config.apiKey);assert.equal(decryptSecret(saved.encryptedApiKey),config.apiKey);
-  assert.equal((await AiConfig.findOne()).encryptedApiKey,undefined);
-  assert.ok(!JSON.stringify(saved).includes(saved.encryptedApiKey));
-  const fetched=await auth(request(app).get("/api/admin/ai/config"));assert.ok(!JSON.stringify(fetched.body).includes("encryptedApiKey"));
-  const logs=await AuditLog.find({action:"AI_CONFIG_UPDATED"}).lean();assert.ok(!JSON.stringify(logs).includes(config.apiKey));
-});
-test("test endpoint sends a tiny request, stores status, and redacts upstream errors",async(t)=>{
-  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({choices:[{message:{content:"OK"}}]}),{status:200}));
-  const {apiKey,...withoutKey}=config;
-  const r=await auth(request(app).post("/api/admin/ai/test")).send(withoutKey);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.data.success,true);
-  assert.equal((await AiConfig.findOne()).lastTestStatus,"connected");
-  const repeated=await auth(request(app).post("/api/admin/ai/test")).send(config);assert.equal(repeated.status,200);assert.equal((await AiConfig.findOne()).lastTestStatus,"connected");
-  globalThis.fetch.mock.restore();t.mock.method(globalThis,"fetch",async()=>new Response(apiKey,{status:401}));
-  const failed=await auth(request(app).post("/api/admin/ai/test")).send(withoutKey);assert.equal(failed.status,502);assert.ok(!JSON.stringify(failed.body).includes(apiKey));
-});
-test("adapters use provider-specific request contracts",()=>{
-  for(const provider of ["openai","openrouter","groq","custom"]){const r=adapters[provider].build({...config,provider,baseUrl:"https://example.test/v1"},"key","system","user",{});assert.ok(r.url.endsWith("/chat/completions"));assert.equal(r.body.temperature,undefined);assert.equal(r.headers.Authorization,"Bearer key");}
-  const gemini=adapters.gemini.build({...config,baseUrl:"https://example.test",model:"gemini-model"},"key","system","user",{});assert.equal(gemini.headers["x-goog-api-key"],"key");assert.equal(gemini.body.generationConfig.responseMimeType,"application/json");
-  const anthropic=adapters.anthropic.build({...config,baseUrl:"https://example.test"},"key","system","user");assert.equal(anthropic.body.system,"system");assert.equal(anthropic.headers["anthropic-version"],"2023-06-01");
-});
-
-test("testing edited settings never updates the saved configuration status",async(t)=>{
- await AiConfig.updateOne({singleton:'default'},{$set:{lastTestStatus:'untested'}});
- t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({choices:[{message:{content:'OK'}}]})));
- const result=await auth(request(app).post('/api/admin/ai/test')).send({...config,temperature:0.7});
- assert.equal(result.status,200);assert.equal((await AiConfig.findOne({singleton:'default'})).lastTestStatus,'untested');
- assert.equal((await AiConfig.findOne({singleton:'default'})).temperature,config.temperature);
-});
-
-test("missing encryption key returns CONFIGURATION_ERROR without persisting",async()=>{
- const original=env.aiEncryptionKey;env.aiEncryptionKey='';
- try{const result=await auth(request(app).put('/api/admin/ai/config')).send(config);assert.equal(result.status,503);assert.equal(result.body.errorCode,'CONFIGURATION_ERROR');}
- finally{env.aiEncryptionKey=original;}
-});
+function mockResponse(body,options){const old=JSON.parse(body);return new Response(JSON.stringify({candidates:[{content:{parts:[{text:old.choices[0].message.content}]},finishReason:"STOP"}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:20}}),{...options,headers:{"Content-Type":"application/json"}});}
 
 test("CORS allows configured origins and denies other origins",async()=>{
- const result=await request(app).options('/api/admin/ai/test').set('Origin',env.corsOrigins[0]).set('Access-Control-Request-Method','POST');
+ const result=await request(app).options('/api/admin/ai/generate-article').set('Origin',env.corsOrigins[0]).set('Access-Control-Request-Method','POST');
  assert.equal(result.status,204);assert.equal(result.headers['access-control-allow-origin'],env.corsOrigins[0]);assert.equal(result.headers['access-control-allow-credentials'],'true');
- assert.equal((await request(app).options('/api/admin/ai/test').set('Origin','https://untrusted.test').set('Access-Control-Request-Method','POST')).status,403);
+ assert.equal((await request(app).options('/api/admin/ai/generate-article').set('Origin','https://untrusted.test').set('Access-Control-Request-Method','POST')).status,403);
 });
 
 test("invalid JSON never echoes credential-bearing input",async()=>{
- const response=await auth(request(app).post('/api/admin/ai/test')).set('Content-Type','application/json').send('{"apiKey":"private-value",BROKEN}');
+ const response=await auth(request(app).post('/api/admin/ai/generate-article')).set('Content-Type','application/json').send('{"apiKey":"private-value",BROKEN}');
  assert.equal(response.status,400);assert.equal(response.body.message,'Invalid JSON request body');assert.ok(!JSON.stringify(response.body).includes('private-value'));
 });
 
@@ -113,7 +56,7 @@ test("JSON contract removes unsafe HTML, disallows media, and rejects invented l
   assert.throws(()=>parseGenerated(JSON.stringify({...data,category:"unsafe"}),{internal:[],external:[]}));assert.throws(()=>parseGenerated("bad",{internal:[],external:[]}));
 });
 test("generation repairs malformed JSON once and auto-save payload is a title-only compatible draft",async(t)=>{
-  let calls=0;t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({choices:[{message:{content:++calls===1?"bad JSON":JSON.stringify(draft())}}],usage:{prompt_tokens:10,completion_tokens:20,total_tokens:30}}),{status:200}));
+  let calls=0;t.mock.method(globalThis,"fetch",async()=>mockResponse(JSON.stringify({choices:[{message:{content:++calls===1?"bad JSON":JSON.stringify(draft())}}],usage:{prompt_tokens:10,completion_tokens:20,total_tokens:30}}),{status:200}));
   const r=await auth(request(app).post("/api/admin/ai/generate-article"),editorToken).send({title:"A supplied headline",language:"hi-IN"});assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(calls,2);assert.equal(r.body.data.article.category,undefined);
   const form=blankArticle();form.title="A supplied headline";form.language="hi-IN";
   const merged=mergeAiDraft(form,r.body.data.article);
@@ -123,16 +66,6 @@ test("generation repairs malformed JSON once and auto-save payload is a title-on
 test("manual text, category, images and SEO controls survive AI merge and reload",()=>{
   const form=blankArticle();Object.assign(form,{title:"Manual title",content:"<p>Manual reporting</p>",category:"123",subCategory:"456",trendingTopic:"Manual trend"});form.seo.canonicalUrl="https://example.test/canonical";form.media={featuredImage:{url:"https://example.test/image",alt:"Manual alt"},images:[{url:"https://example.test/gallery"}]};
   const merged=mergeAiDraft(form,draft());assert.deepEqual(merged.media,form.media);assert.equal(merged.category,"123");assert.equal(merged.subCategory,"456");assert.equal(merged.content,form.content);assert.equal(merged.title,form.title);assert.equal(merged.seo.canonicalUrl,form.seo.canonicalUrl);assert.equal(fromArticle(merged).trendingTopic,"Manual trend");
-});
-test("timeout protection and invalid credentials do not retry",async(t)=>{
-  let count=0;t.mock.method(globalThis,"fetch",async()=>{count++;return new Response("sensitive",{status:401});});
-  await assert.rejects(callProvider({...config,baseUrl:"https://example.test"},"key","s","u"),/credentials/);assert.equal(count,1);
-  globalThis.fetch.mock.restore();t.mock.method(globalThis,"fetch",async()=>{throw new Error("sensitive key");});
-  await assert.rejects(callProvider({...config,baseUrl:"https://example.test"},"key","s","u",undefined,AbortSignal.abort()),/timed out/);
-});
-test("retryable upstream failures use bounded retries",async(t)=>{
-  let count=0;t.mock.method(globalThis,"fetch",async()=>++count<3?new Response("unavailable",{status:503}):new Response(JSON.stringify({choices:[{message:{content:"OK"}}]}),{status:200}));
-  const result=await callProvider({...config,baseUrl:"https://example.test"},"key","s","u");assert.equal(result.text,"OK");assert.equal(count,3);
 });
 test("per-admin quota is shared and enforced",async()=>{
   const admin=await Admin.findOne({role:"editor"});
@@ -145,8 +78,7 @@ test("trend normalization merges clear variants but not different numbered event
   assert.throws(()=>queryDate({date:"2026-02-30"}));assert.throws(()=>queryDate({country:"ZZ"}));
 });
 test("daily snapshots are idempotent, preserve history, tolerate source failures and protect cron",async(t)=>{
-  await auth(request(app).put("/api/admin/ai/config/trending")).send({...config,model:"trending-model",apiKey:"independent-trend-key"});
-  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Present in current source coverage",search_keywords:["technology"],article_angle:"Explain the reported development",language_priority:"Hindi"}))})}}]}),{status:200}));
+  t.mock.method(globalThis,"fetch",async()=>mockResponse(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Present in current source coverage",search_keywords:["technology"],article_angle:"Explain the reported development",language_priority:"Hindi"}))})}}]}),{status:200}));
   const providers=[{name:"good",fetch:async()=>Array.from({length:25},(_,i)=>({title:`India technology policy ${i}`,provider:"good",url:`https://source.test/${i}`,position:i+1,publishedAt:new Date()}))},{name:"bad",fetch:async()=>{throw new Error("Unavailable");}}];
   const first=await refreshTrends("IN",{providers});const again=await refreshTrends("IN",{providers});assert.equal(String(first._id),String(again._id));assert.equal(await TrendingSnapshot.countDocuments({date:trendDate("IN"),country:"IN"}),1);assert.equal(first.sourceHealth[1].status,"unavailable");
   await TrendingSnapshot.create({date:"2020-01-01",country:"IN",topics:[]});
@@ -157,18 +89,6 @@ test("daily snapshots are idempotent, preserve history, tolerate source failures
   const list=await auth(request(app).get("/api/admin/trending"));assert.equal(list.status,200);assert.equal(list.body.data.lockToken,undefined);
   const detail=await auth(request(app).get("/api/admin/trending/"+retained.topics[0]._id));assert.equal(detail.status,200);
   assert.equal((await auth(request(app).get("/api/admin/trending?date=invalid"))).status,422);
-});
-
-test("independent configurations preserve blank keys and legacy article settings",async(t)=>{
- const articleBefore=await AiConfig.findOne({singleton:"default"}).select("+encryptedApiKey");
- const trendBefore=await AiConfig.findOne({singleton:"trending"}).select("+encryptedApiKey");
- const r=await auth(request(app).put("/api/admin/ai/config/trending")).send({...config,model:"trending-model-2",apiKey:""});assert.equal(r.status,200,JSON.stringify(r.body));
- assert.equal(decryptSecret((await AiConfig.findOne({singleton:"trending"}).select("+encryptedApiKey")).encryptedApiKey),decryptSecret(trendBefore.encryptedApiKey));
- const articleAfter=await AiConfig.findOne({singleton:"default"}).select("+encryptedApiKey");assert.equal(articleAfter.encryptedApiKey,articleBefore.encryptedApiKey);assert.equal(articleAfter.model,articleBefore.model);
- for(const path of ["/api/admin/ai/config","/api/admin/ai/config/article","/api/admin/ai/config/trending"]){const result=await auth(request(app).get(path));assert.equal(result.status,200);assert.equal(result.body.data.outputMode,undefined);assert.equal(result.body.data.apiKey,undefined);assert.equal(result.body.data.encryptedApiKey,undefined);}
- assert.equal((await auth(request(app).put("/api/admin/ai/config/invalid")).send(config)).status,422);
- t.mock.method(globalThis,"fetch",async(_url,options)=>{const body=JSON.parse(options.body);assert.equal(body.model,articleBefore.model);assert.equal(options.headers.Authorization,"Bearer "+config.apiKey);return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(draft())}}]}));});
- const generated=await auth(request(app).post("/api/admin/ai/generate-article")).send({title:"Independent article"});assert.equal(generated.status,200,JSON.stringify(generated.body));assert.equal(generated.body.data.model,articleBefore.model);
 });
 
 test("invalid, expired and revoked access tokens return 401",async()=>{
@@ -190,23 +110,22 @@ test("MongoDB expires snapshots after 30 days and keeps recent history",async()=
  assert.equal(exists,false);assert.ok(await TrendingSnapshot.exists({_id:recent._id}));
 });
 
-test("all six providers support isolated test, encrypted save, reload and article generation with mocked HTTP",async(t)=>{
- await RequestQuota.deleteMany({});env.aiCustomHosts=['approved-provider.test'];
- for(const provider of Object.keys(adapters)){
-  const model=provider==='gemini'?'models/test-model':'test-model';
-  const input={provider,model,apiKey:'fixture-key-not-real',baseUrl:provider==='custom'?'https://approved-provider.test/v1':'',temperature:0.4,maxTokens:4096,enabled:true};
-  let requests=0;t.mock.method(globalThis,'fetch',async(_url,options)=>{
-   const body=JSON.parse(options.body),probe=provider==='gemini'?body.contents[0].parts[0].text==='Reply only with OK':body.messages.at(-1).content==='Reply only with OK';
-   requests++;const text=probe?'OK':JSON.stringify(draft());
-   const payload=provider==='gemini'?{candidates:[{content:{parts:[{text}]},finishReason:'STOP'}]}:provider==='anthropic'?{content:[{type:'text',text}],stop_reason:'end_turn'}:{choices:[{message:{content:text},finish_reason:'stop'}]};
-   return new Response(JSON.stringify(payload));
-  });
-  const before=await AiConfig.findOne({singleton:'default'}).lean();
-  const probe=await auth(request(app).post('/api/admin/ai/config/article/test')).send(input);assert.equal(probe.status,200,JSON.stringify(probe.body));
-  const after=await AiConfig.findOne({singleton:'default'}).lean();assert.equal(after.provider,before.provider);assert.equal(after.model,before.model);
-  const saved=await auth(request(app).put('/api/admin/ai/config/article')).send(input);assert.equal(saved.status,200);
-  const loaded=await auth(request(app).get('/api/admin/ai/config/article'));assert.equal(loaded.body.data.provider,provider);assert.equal(loaded.body.data.model,model);assert.equal(loaded.body.data.apiKeyConfigured,true);assert.ok(!JSON.stringify(loaded.body).includes(input.apiKey));
-  const generated=await auth(request(app).post('/api/admin/ai/generate-article')).send({title:'Provider matrix story',targetWords:300});assert.equal(generated.status,200,JSON.stringify(generated.body));assert.equal(generated.body.data.provider,provider);assert.equal(generated.body.data.article.title,draft().title);assert.equal(requests,2);
-  globalThis.fetch.mock.restore();
+test("central AI endpoints enforce roles and obsolete configuration routes are gone",async()=>{
+ for(const path of ["/api/admin/ai/readiness","/api/admin/ai/status"])assert.equal((await request(app).get(path)).status,401);
+ assert.equal((await auth(request(app).get('/api/admin/ai/readiness'),authorToken)).status,403);
+ const ready=await auth(request(app).get('/api/admin/ai/readiness'),editorToken);assert.equal(ready.status,200);assert.equal(ready.body.data.configured,true);assert.ok(!JSON.stringify(ready.body).includes(env.gemini.apiKey));
+ for(const path of ['/api/admin/ai/config','/api/admin/ai/config/article','/api/admin/ai/config/trending']){
+  assert.equal((await auth(request(app).get(path))).status,404);assert.equal((await auth(request(app).put(path)).send({apiKey:'ignored-key'})).status,404);
  }
+ assert.equal((await auth(request(app).post('/api/admin/ai/test')).send({})).status,404);
+ assert.equal((await auth(request(app).post('/api/admin/ai/generate-article'),authorToken).send({title:'Test'})).status,403);
+});
+test("status performs a Gemini request and returns safe connection diagnostics",async(t)=>{
+ await RequestQuota.deleteMany({});
+ t.mock.method(globalThis,'fetch',async()=>mockResponse(JSON.stringify({choices:[{message:{content:'OK'}}]})));
+ const result=await auth(request(app).get('/api/admin/ai/status'));assert.equal(result.status,200);assert.equal(result.body.data.connected,true);
+ globalThis.fetch.mock.restore();t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({error:{message:env.gemini.apiKey}}),{status:401,headers:{'Content-Type':'application/json'}}));
+ const failed=await auth(request(app).get('/api/admin/ai/status'));assert.equal(failed.status,502);assert.equal(failed.body.data.connected,false);assert.ok(!JSON.stringify(failed.body).includes(env.gemini.apiKey));
+ const saved=env.gemini.apiKey;env.gemini.apiKey='';try{const missing=await auth(request(app).get('/api/admin/ai/status'));assert.equal(missing.status,503);assert.equal(missing.body.data.configured,false);}finally{env.gemini.apiKey=saved;}
+ const logs=await AuditLog.find({action:'AI_CONNECTION_TESTED'}).lean();assert.ok(!JSON.stringify(logs).includes(env.gemini.apiKey));
 });
