@@ -13,7 +13,7 @@ export function ArticleActions({article}){
 export function ViewTracker({id}){
  useEffect(()=>{
   const key="td.view."+id;const timer=setTimeout(()=>{
-   try{if(document.visibilityState!=="visible"||sessionStorage.getItem(key))return;const base=(process.env.NEXT_PUBLIC_API_URL||"http://localhost:5000/api").replace(/\/$/,"");fetch(base+"/articles/"+id+"/view",{method:"POST",keepalive:true}).then(r=>{if(r.ok)sessionStorage.setItem(key,"1");}).catch(()=>{});}catch{}
+   try{if(document.visibilityState!=="visible"||sessionStorage.getItem(key))return;fetch("/api/articles/"+id+"/view",{method:"POST",keepalive:true}).then(r=>{if(r.ok)sessionStorage.setItem(key,"1");}).catch(()=>{});}catch{}
   },8000);return()=>clearTimeout(timer);
  },[id]);return null;
 }

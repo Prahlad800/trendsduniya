@@ -1,25 +1,85 @@
-import Image from "next/image";
 import Link from "next/link";
 import {notFound,permanentRedirect} from "next/navigation";
-import {getArticle,getPublic,articleImage,formatDate,SITE_URL} from "../../../lib/api";
+import {getArticle,getPublic,articleImage,SITE_URL} from "../../../lib/api";
+import {articleSummary,uniqueStories} from "../../../lib/article";
+import NewsImage from "../../../components/news-image";
 import ArticleCard from "../../../components/article-card";
+import ArticleMeta from "../../../components/article-meta";
+import ArticleContent from "../../../components/article-content";
+import ArticleSidebar from "../../../components/article-sidebar";
+import ShareButtons from "../../../components/share-buttons";
+import RetryButton from "../../../components/retry-button";
 import {ArticleActions,ViewTracker} from "../../../components/article-actions";
+import {SectionHeading} from "../../../components/news-sections";
 import Icon from "../../../components/icons";
-export async function generateMetadata({params}){
- const article=await getArticle((await params).slug);
- if(!article)return {title:"Story not found",robots:{index:false,follow:false}};
- const seo=article.seo||{},image=articleImage(article),og=seo.openGraph||{},twitter=seo.twitter||{},robots=seo.robots||{};
- return {title:{absolute:seo.metaTitle||article.title},description:seo.metaDescription||article.excerpt,alternates:{canonical:seo.canonicalUrl||`${SITE_URL}/article/${article.slug}`},robots:{index:robots.index!==false,follow:robots.follow!==false,googleBot:{"max-snippet":robots.maxSnippet??-1,"max-image-preview":robots.maxImagePreview||"large","max-video-preview":robots.maxVideoPreview??-1}},openGraph:{type:"article",title:og.title||article.title,description:og.description||article.excerpt,url:seo.canonicalUrl,siteName:og.siteName||"TrendsDuniya",publishedTime:article.publishedAt,modifiedTime:article.updatedAt,authors:article.author?[article.author.name]:undefined,images:og.image||image?.url?[{url:og.image||image.url,alt:og.imageAlt||image?.alt||""}]:[]},twitter:{card:twitter.card||"summary_large_image",title:twitter.title||article.title,description:twitter.description||article.excerpt,images:twitter.image||image?.url?[{url:twitter.image||image.url,alt:twitter.imageAlt||image?.alt||""}]:[]}};
+
+export async function generateMetadata({params}) {
+ let article;
+ try {article=await getArticle((await params).slug);}catch{return {title:"Article unavailable",robots:{index:false,follow:false}};}
+ if(!article)return {title:"Article Not Found",robots:{index:false,follow:false}};
+ const seo=article.seo||{},image=articleImage(article),robots=seo.robots||{};
+ const title=seo.metaTitle||article.title,description=seo.metaDescription||articleSummary(article);
+ const canonical=seo.canonicalUrl||`${SITE_URL}/article/${encodeURIComponent(article.slug)}`;
+ const images=image?.url?[{url:image.url,alt:image.alt||article.title}]:[];
+ return {
+  title:{absolute:title},description,alternates:{canonical},
+  robots:{index:robots.index!==false,follow:robots.follow!==false,googleBot:{"max-snippet":robots.maxSnippet??-1,"max-image-preview":robots.maxImagePreview||"large","max-video-preview":robots.maxVideoPreview??-1}},
+  openGraph:{type:"article",title,description,url:canonical,siteName:"TrendsDuniya",publishedTime:article.publishedAt,modifiedTime:article.updatedAt,authors:article.author?.name?[article.author.name]:undefined,images},
+  twitter:{card:"summary_large_image",title,description,images}
+ };
 }
 const json=value=>JSON.stringify(value).replace(/</g,"\\u003c");
-export default async function ArticlePage({params}){
- const {slug}=await params,article=await getArticle(slug);
+const fulfilled=result=>result.status==="fulfilled"?result.value.data||[]:[];
+
+export default async function ArticlePage({params}) {
+ const {slug}=await params;
+ let article;
+ try {article=await getArticle(slug);}catch{return <main className="site-container article-not-found"><p className="eyebrow">PLEASE TRY AGAIN</p><h1>Unable to load this article right now.</h1><p>Please try again in a moment.</p><RetryButton/></main>;}
  if(!article)notFound();
  if(article.slug!==slug)permanentRedirect("/article/"+encodeURIComponent(article.slug));
- const image=articleImage(article),schema=article.schema||{};
- const related=await getPublic("/articles/"+encodeURIComponent(article.slug)+"/related").catch(()=>({data:[]}));
- const articleSchema={"@context":"https://schema.org","@type":article.articleType==="news"?"NewsArticle":"Article",headline:article.title,description:article.excerpt,image:image?.url,datePublished:article.publishedAt,dateModified:article.updatedAt,inLanguage:article.language,mainEntityOfPage:article.seo?.canonicalUrl,author:article.author?{"@type":"Person",name:article.author.name,url:`${SITE_URL}/authors/${article.author.slug}`}:undefined,publisher:{"@type":"Organization",name:"TrendsDuniya",url:SITE_URL}};
- const breadcrumb={"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:(schema.breadcrumb?.items||[{name:"Home",url:"/"},{name:article.title,url:"/article/"+article.slug}]).map((item,index)=>({"@type":"ListItem",position:index+1,name:item.name,item:new URL(item.url,SITE_URL).href}))};
- return <main><article className="article-page site-container"><nav className="breadcrumbs" aria-label="Breadcrumb"><Link href="/">Home</Link><Icon name="chevron" size={11}/>{article.category&&<><Link href={`/categories/${article.category.slug}`}>{article.category.name}</Link><Icon name="chevron" size={11}/></>}<span>Article</span></nav><div className="article-header"><p className="eyebrow">{article.category?.name||article.articleType}</p><h1>{article.title}</h1><p className="article-deck">{article.excerpt}</p><div className="article-meta-row"><div className="author-meta">{article.author&&<><span className="author-initials small">{article.author.name.slice(0,2).toUpperCase()}</span><div><Link href={`/authors/${article.author.slug}`}>{article.author.name}</Link><small><time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time><span> · </span>{article.readingTime||1} min read</small></div></>}{!article.author&&<div><small><time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time><span> ? </span>{article.readingTime||1} min read</small></div>}</div><ArticleActions article={{slug:article.slug,title:article.title,excerpt:article.excerpt,category:article.category}}/></div></div>{image?.url&&<figure className="article-feature"><div><Image src={image.url} alt={image.alt||""} fill priority sizes="(max-width: 1000px) 100vw, 1120px" className="cover-image"/></div>{image.caption&&<figcaption>{image.caption}</figcaption>}</figure>}<div className="article-content-layout"><aside className="article-aside"><span className="eyebrow">IN THIS STORY</span>{article.tags?.length?<div className="article-tags">{article.tags.map(t=><Link key={t._id} href={`/tags/${t.slug}`}>{t.name}</Link>)}</div>:<p>A TrendsDuniya perspective.</p>}<hr/><small>Updated<br/>{formatDate(article.updatedAt)}</small></aside><div className="article-body"><div className="prose" dangerouslySetInnerHTML={{__html:article.content}}/>{article.media?.images?.length>0&&<div className="article-gallery">{article.media.images.map((img,i)=><figure key={img.publicId||i}><div><Image src={img.url} alt={img.alt||""} fill sizes="(max-width: 760px) 100vw, 700px" className="cover-image"/></div>{img.caption&&<figcaption>{img.caption}</figcaption>}</figure>)}</div>}{article.faq?.length>0&&<section className="article-faq"><h2>Questions, answered.</h2>{article.faq.map((f,i)=><details key={i}><summary>{f.question}<span>+</span></summary><p>{f.answer}</p></details>)}</section>}{(article.source?.attributionText||article.source?.url||article.source?.name||article.externalLinks?.length>0)&&<section className="article-sources"><h3>Sources & further reading</h3>{(article.source?.attributionText||article.source?.url||article.source?.name)&&<p>{article.source.attributionText} {!article.source.url&&article.source.name} {article.source.url&&<a href={article.source.url} target="_blank" rel="noopener noreferrer">{article.source.name||"View source"} ↗</a>}</p>}{article.externalLinks?.map((l,i)=><a key={i} href={l.url} target="_blank" rel={"noopener noreferrer "+(l.rel||"")}>{l.title||l.anchorText||l.url} ↗</a>)}</section>}{article.internalLinks?.length>0&&<section className="article-sources"><h3>Keep exploring</h3>{article.internalLinks.map((l,i)=><Link href={l.url} key={i}>{l.anchorText||l.title} →</Link>)}</section>}{article.author&&<section className="author-bio"><span className="author-initials">{article.author.name.slice(0,2).toUpperCase()}</span><div><p className="eyebrow">ABOUT THE AUTHOR</p><h3><Link href={`/authors/${article.author.slug}`}>{article.author.name}</Link></h3>{article.author.bio&&<p>{article.author.bio}</p>}<Link href={`/authors/${article.author.slug}`} className="text-link">More from this author <Icon name="arrow" size={14}/></Link></div></section>}</div></div></article>{related.data?.length>0&&<section className="site-container related-section"><div className="section-heading"><div><p className="eyebrow">FOLLOW THE THREAD</p><h2>A little more perspective.</h2></div><Link href="/latest" className="text-link">All stories <Icon name="arrow" size={15}/></Link></div><div className="stories-grid">{related.data.slice(0,3).map(a=><ArticleCard key={a.id||a._id} article={a}/>)}</div></section>}{schema.article?.enabled!==false&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:json(articleSchema)}}/>}{schema.breadcrumb?.enabled!==false&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:json(breadcrumb)}}/>}<ViewTracker id={article.id||article._id}/></main>;
+ const image=articleImage(article),summary=articleSummary(article);
+ const canonical=article.seo?.canonicalUrl||`${SITE_URL}/article/${encodeURIComponent(article.slug)}`;
+ const categoryPath=article.category?.slug?"/articles/category/"+encodeURIComponent(article.category.slug)+"?limit=12":"/articles?limit=12";
+ const [relatedResult,trendingResult,categoryResult]=await Promise.allSettled([
+  getPublic("/articles/"+encodeURIComponent(article.slug)+"/related"),
+  getPublic("/articles?sort=-analytics.views&limit=6"),
+  getPublic(categoryPath)
+ ]);
+ const categoryStories=uniqueStories(fulfilled(categoryResult),slug);
+ const related=uniqueStories(fulfilled(relatedResult),slug);
+ const relatedStories=(related.length?related:categoryStories).slice(0,6);
+ const trending=uniqueStories(fulfilled(trendingResult),slug).slice(0,5);
+ const more=categoryStories.filter(a=>!relatedStories.some(r=>r.slug===a.slug)).slice(0,3);
+ const articleSchema={
+  "@context":"https://schema.org","@type":article.articleType==="news"?"NewsArticle":"Article",
+  headline:article.title,description:summary,image:image?.url,datePublished:article.publishedAt,dateModified:article.updatedAt||article.publishedAt,inLanguage:article.language,mainEntityOfPage:canonical,
+  author:article.author?.name?{"@type":"Person",name:article.author.name,...(article.author.slug?{url:`${SITE_URL}/authors/${article.author.slug}`}:{})}:undefined,
+  publisher:{"@type":"Organization",name:"TrendsDuniya",url:SITE_URL,logo:{"@type":"ImageObject",url:SITE_URL+"/icon.svg"}}
+ };
+ const crumbItems=[{name:"Home",url:"/"},...(article.category?.slug?[{name:article.category.name,url:"/categories/"+article.category.slug}]:[]),{name:article.title,url:"/article/"+article.slug}];
+ const breadcrumb={"@context":"https://schema.org","@type":"BreadcrumbList",itemListElement:crumbItems.map((item,index)=>({"@type":"ListItem",position:index+1,name:item.name,item:new URL(item.url,SITE_URL).href}))};
+ return <main className="site-container article-detail">
+  <nav className="article-breadcrumb" aria-label="Breadcrumb"><Link href="/">Home</Link><Icon name="chevron" size={12}/>{article.category?.slug&&<><Link href={`/categories/${article.category.slug}`}>{article.category.name}</Link><Icon name="chevron" size={12}/></>}<span aria-current="page">{article.title}</span></nav>
+  <div className={`article-shell ${relatedStories.length||trending.length?"":"without-sidebar"}`}>
+   <div className="article-main-column">
+    <article lang={article.language||undefined}>
+     <header className="article-detail-header">
+      {article.category?.slug&&<Link className="article-category" href={`/categories/${article.category.slug}`}>{article.category.name}</Link>}
+      <h1>{article.title}</h1>
+      {summary&&<p className="article-summary">{summary}</p>}
+      <div className="article-detail-meta"><ArticleMeta article={article}/><ArticleActions article={{slug:article.slug,title:article.title,excerpt:summary,category:article.category}}/></div>
+      <ShareButtons title={article.title} url={canonical}/>
+     </header>
+     <figure className="article-detail-hero"><div><NewsImage src={image?.url} alt={image?.alt||article.title} priority sizes="(max-width: 1000px) 100vw, 900px"/></div>{image?.caption&&<figcaption>{image.caption}</figcaption>}</figure>
+     <ArticleContent article={article}/>
+    </article>
+    {relatedStories.length>0&&<section className="article-related-bottom"><SectionHeading title="Related News"/><div className="article-related-grid">{relatedStories.map(a=><ArticleCard key={a.slug} article={a}/>)}</div></section>}
+   </div>
+   <ArticleSidebar related={relatedStories} trending={trending}/>
+  </div>
+  {article.category?.name&&more.length>0&&<section className="article-more-category"><SectionHeading title={`More from ${article.category.name}`} href={`/categories/${article.category.slug}`}/><div className="article-more-grid">{more.map(a=><ArticleCard key={a.slug} article={a}/>)}</div></section>}
+  <script type="application/ld+json" dangerouslySetInnerHTML={{__html:json(articleSchema)}}/>
+  <script type="application/ld+json" dangerouslySetInnerHTML={{__html:json(breadcrumb)}}/>
+  <ViewTracker id={article.id||article._id}/>
+ </main>;
 }
-

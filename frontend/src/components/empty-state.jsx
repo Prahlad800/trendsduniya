@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Icon from "./icons";
-export default function EmptyState({title="The next chapter is on its way.",description="Fresh perspectives will appear here when our editors publish them.",error=false}){
- return <div className={`public-empty ${error?"error-state":""}`}><span className="empty-symbol"><Icon name={error?"globe":"news"} size={32}/></span><p className="eyebrow">{error?"A BRIEF INTERRUPTION":"STAY CURIOUS"}</p><h2>{title}</h2><p>{description}</p><Link href={error?"/latest":"/categories"} className="public-btn">{error?"Try again":"Explore topics"}<Icon name="arrow" size={16}/></Link></div>;
+import RetryButton from "./retry-button";
+export default function EmptyState({title,description,error=false}) {
+ return <div className={`public-empty ${error?"error-state":""}`} role="status"><span className="empty-symbol"><Icon name="news" size={32}/></span><p className="eyebrow">{error?"PLEASE TRY AGAIN":"FROM THE NEWSROOM"}</p><h2>{error?"Unable to load news right now.":title||"No news available right now."}</h2><p>{error?"Please try again in a moment.":description||"New stories will appear here as our editors publish them."}</p>{error?<RetryButton/>:<Link href="/latest" className="public-btn">Explore latest news <Icon name="arrow" size={16}/></Link>}</div>;
 }
-

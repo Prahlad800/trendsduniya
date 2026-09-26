@@ -1,4 +1,8 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# TrendsDuniya frontend
+
+See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for the architecture, redesigned frontend and article page, API integration, environment configuration, changed files and verification results.
+
+This is the existing [Next.js](https://nextjs.org) application, originally bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started
 

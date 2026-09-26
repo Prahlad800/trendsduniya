@@ -45,3 +45,6 @@ next-env.d.ts
 # Keep environment secrets local; commit templates only.
 .env*
 !.env.example
+
+# Local browser verification artifacts
+/test-results/
