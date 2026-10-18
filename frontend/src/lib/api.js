@@ -1,6 +1,6 @@
 import {cache} from "react";
 export const API_URL=(process.env.API_URL||process.env.NEXT_PUBLIC_API_URL||"http://localhost:5000/api").replace(/\/$/,"");
-export const SITE_URL=(process.env.NEXT_PUBLIC_SITE_URL||"http://localhost:3000").replace(/\/$/,"");
+export {SITE_URL} from "./site-url.mjs";
 export class ApiError extends Error{constructor(message,status){super(message);this.status=status;}}
 export async function getPublic(path){
  let response;

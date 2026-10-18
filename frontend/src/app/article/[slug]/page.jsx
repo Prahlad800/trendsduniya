@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {notFound,permanentRedirect} from "next/navigation";
 import {getArticle,getPublic,articleImage,SITE_URL} from "../../../lib/api";
+import {articleCanonical} from "../../../lib/site-url.mjs";
 import {articleSummary,uniqueStories} from "../../../lib/article";
 import NewsImage from "../../../components/news-image";
 import ArticleCard from "../../../components/article-card";
@@ -19,7 +20,7 @@ export async function generateMetadata({params}) {
  if(!article)return {title:"Article Not Found",robots:{index:false,follow:false}};
  const seo=article.seo||{},image=articleImage(article),robots=seo.robots||{};
  const title=seo.metaTitle||article.title,description=seo.metaDescription||articleSummary(article);
- const canonical=seo.canonicalUrl||`${SITE_URL}/article/${encodeURIComponent(article.slug)}`;
+ const canonical=articleCanonical(article);
  const images=image?.url?[{url:image.url,alt:image.alt||article.title}]:[];
  return {
   title:{absolute:title},description,alternates:{canonical},
@@ -38,7 +39,7 @@ export default async function ArticlePage({params}) {
  if(!article)notFound();
  if(article.slug!==slug)permanentRedirect("/article/"+encodeURIComponent(article.slug));
  const image=articleImage(article),summary=articleSummary(article);
- const canonical=article.seo?.canonicalUrl||`${SITE_URL}/article/${encodeURIComponent(article.slug)}`;
+ const canonical=articleCanonical(article);
  const categoryPath=article.category?.slug?"/articles/category/"+encodeURIComponent(article.category.slug)+"?limit=12":"/articles?limit=12";
  const [relatedResult,trendingResult,categoryResult]=await Promise.allSettled([
   getPublic("/articles/"+encodeURIComponent(article.slug)+"/related"),
