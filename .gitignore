@@ -1,1 +1,9 @@
-postman
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+postman/*
+!postman/AI-News-Automation.postman_collection.json

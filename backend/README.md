@@ -402,6 +402,6 @@ npm test
 npm run lint
 ```
 
-## Central Gemini service
+## Central Groq service
 
-Use Node.js 22 or later. All AI features call `src/services/gemini.service.js`, using Google's generateContent API with native fetch. Set `GEMINI_API_KEY` and `GEMINI_MODEL` separately in backend/.env and restart the server. Keys remain server-side. Edit article instructions in `src/services/ai/prompt.js` and trending instructions in `src/services/trending/prompt.js`. See [AI setup](../AI-TRENDS.md).
+Use Node.js 22 or later. All AI features call `src/services/groq.service.js`, using Groq's chat completions API with native fetch. Set `GROQ_API_KEY` and `GROQ_MODEL` separately in backend/.env and restart the server. Keys remain server-side. Edit article instructions in `src/services/ai/prompt.js` and trending instructions in `src/services/trending/prompt.js`. See [AI setup](../AI-TRENDS.md).

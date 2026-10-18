@@ -12,7 +12,8 @@ import AuditLog from "../src/models/AuditLog.js";
 import Article from "../src/models/Article.js";
 import {parseGenerated} from "../src/services/ai/ai.service.js";
 import {normalizeTrend,sameTopic,rankTrends} from "../src/services/trending/trendRanking.service.js";
-import {refreshTrends,trendDate,queryDate} from "../src/services/trending/trending.service.js";
+import {refreshTrends,trendDate,queryDate,publicSnapshot} from "../src/services/trending/trending.service.js";
+import {worldRegions} from "../src/services/trending/providers/index.js";
 import {blankArticle,toPayload,fromArticle} from "../../admin/src/lib/article-form.mjs";
 import {mergeAiDraft} from "../../admin/src/lib/ai-draft.mjs";
 import jwt from "jsonwebtoken";
@@ -22,7 +23,7 @@ let db,adminToken,editorToken,authorToken;
 const auth=(r,t=adminToken)=>r.set("Authorization","Bearer "+t);
 const draft=()=>({title:"A supplied headline",slug:"a-supplied-headline",excerpt:"A draft awaiting verification.",summary:"Verify the announcement.",content:"<p>The supplied headline requires verification before publication.</p>",articleType:"news",articleSection:"Technology",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Understand the supplied headline",primaryKeyword:"headline",relatedKeywords:[],relatedTopics:[],metaTitle:"A supplied headline",metaDescription:"A draft awaiting independent confirmation."},faq:[],internalLinks:[],externalLinks:[],suggestedTags:["Technology"],editorialNotes:"Verify source documents before publishing."});
 before(async()=>{
-  env.gemini={apiKey:"test-secret-key-not-real",model:"test-model"};env.cronSecret="test-cron-secret";
+  env.groq={apiKey:"test-secret-key-not-real",model:"test-model"};env.cronSecret="test-cron-secret";
   db=await MongoMemoryReplSet.create({instanceOpts:[{launchTimeout:60000}],replSet:{count:1},binary:{version:"7.0.14"}});
   env.mongoUri=db.getUri();
   await mongoose.connect(env.mongoUri);
@@ -32,7 +33,7 @@ before(async()=>{
   [adminToken,editorToken,authorToken]=tokens;
 });
 after(async()=>{await mongoose.disconnect();await db?.stop();});
-function mockResponse(body,options){const old=JSON.parse(body);return new Response(JSON.stringify({candidates:[{content:{parts:[{text:old.choices[0].message.content}]},finishReason:"STOP"}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:20}}),{...options,headers:{"Content-Type":"application/json"}});}
+function mockResponse(body,options){const payload=JSON.parse(body);payload.choices?.forEach(c=>{c.finish_reason="stop";});return new Response(JSON.stringify(payload),{...options,headers:{"Content-Type":"application/json"}});}
 
 test("CORS allows configured origins and denies other origins",async()=>{
  const result=await request(app).options('/api/admin/ai/generate-article').set('Origin',env.corsOrigins[0]).set('Access-Control-Request-Method','POST');
@@ -48,6 +49,12 @@ test("invalid JSON never echoes credential-bearing input",async()=>{
 test("database failures during authentication return 503 rather than expiring the session",async(t)=>{
  t.mock.method(AuthSession,'findOne',()=>{throw Object.assign(new Error('private connection detail'),{name:'MongoNetworkError'});});
  const response=await auth(request(app).get('/api/auth/me'));assert.equal(response.status,503);assert.equal(response.body.errorCode,'DATABASE_ERROR');assert.ok(!JSON.stringify(response.body).includes('private connection detail'));
+});
+
+test("login database timeouts return a sanitized service error rather than invalid credentials",async t=>{
+ t.mock.method(Admin,"findOne",()=>{throw Object.assign(new Error("private database host and query"),{name:"MongoOperationTimeoutError"});});
+ const response=await request(app).post("/api/auth/login").send({email:"superadmin@ai-test.test",password:"Test-password-123"});
+ assert.equal(response.status,503);assert.equal(response.body.errorCode,"DATABASE_ERROR");assert.ok(!JSON.stringify(response.body).includes("private database"));
 });
 test("JSON contract removes unsafe HTML, disallows media, and rejects invented links",()=>{
   const data=draft();data.content+='<script>alert(1)</script><img src="https://invented.test/image"><a href="https://invented.test">Link</a>';
@@ -78,17 +85,34 @@ test("trend normalization merges clear variants but not different numbered event
   assert.throws(()=>queryDate({date:"2026-02-30"}));assert.throws(()=>queryDate({country:"ZZ"}));
 });
 test("daily snapshots are idempotent, preserve history, tolerate source failures and protect cron",async(t)=>{
-  t.mock.method(globalThis,"fetch",async()=>mockResponse(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Present in current source coverage",search_keywords:["technology"],article_angle:"Explain the reported development",language_priority:"Hindi"}))})}}]}),{status:200}));
+  t.mock.method(globalThis,"fetch",async()=>mockResponse(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:5},(_,candidateId)=>({candidateId,title_en:"News "+candidateId,title_hi:"समाचार "+candidateId,why_trending_hi:"हाल की विश्वसनीय खबरों में चर्चा।",article_angle_hi:"खबर की पृष्ठभूमि समझाएँ।",category:"Technology",trend_score:100-candidateId,why_trending:"Present in current source coverage",search_keywords:["technology"],article_angle:"Explain the reported development",language_priority:"Hindi"}))})}}]}),{status:200}));
   const providers=[{name:"good",fetch:async()=>Array.from({length:25},(_,i)=>({title:`India technology policy ${i}`,provider:"good",url:`https://source.test/${i}`,position:i+1,publishedAt:new Date()}))},{name:"bad",fetch:async()=>{throw new Error("Unavailable");}}];
   const first=await refreshTrends("IN",{providers});const again=await refreshTrends("IN",{providers});assert.equal(String(first._id),String(again._id));assert.equal(await TrendingSnapshot.countDocuments({date:trendDate("IN"),country:"IN"}),1);assert.equal(first.sourceHealth[1].status,"unavailable");
   await TrendingSnapshot.create({date:"2020-01-01",country:"IN",topics:[]});
-  const cron=await request(app).get("/api/internal/jobs/trending").set("Authorization","Bearer "+env.cronSecret);assert.equal(cron.status,200);
+  const cron=await request(app).post("/api/internal/jobs/trending").set("Authorization","Bearer "+env.cronSecret).send({country:"IN"});assert.equal(cron.status,200);
   await TrendingSnapshot.updateOne({_id:first._id},{$set:{lastAttemptAt:new Date(0)}});
   await assert.rejects(refreshTrends("IN",{force:true,providers:[providers[1]]}),/All trend sources/);
-  const retained=await TrendingSnapshot.findById(first._id);assert.equal(retained.topics.length,20);assert.equal(await TrendingSnapshot.countDocuments({date:"2020-01-01"}),1);
-  const list=await auth(request(app).get("/api/admin/trending"));assert.equal(list.status,200);assert.equal(list.body.data.lockToken,undefined);
+  const retained=await TrendingSnapshot.findById(first._id);assert.equal(retained.topics.length,5);assert.equal(await TrendingSnapshot.countDocuments({date:"2020-01-01"}),1);
+  const list=await auth(request(app).get("/api/admin/trending?country=IN"));assert.equal(list.status,200);assert.equal(list.body.data.lockToken,undefined);
   const detail=await auth(request(app).get("/api/admin/trending/"+retained.topics[0]._id));assert.equal(detail.status,200);
   assert.equal((await auth(request(app).get("/api/admin/trending?date=invalid"))).status,422);
+});
+
+test("worldwide default collects multiple regions and saves exactly five bilingual topics",async t=>{
+ const regions=[];
+ t.mock.method(globalThis,"fetch",async()=>mockResponse(JSON.stringify({choices:[{message:{content:JSON.stringify({topics:Array.from({length:5},(_,candidateId)=>({candidateId,title_en:`Global news ${candidateId}`,title_hi:`वैश्विक समाचार ${candidateId}`,why_trending_hi:"विभिन्न क्षेत्रों के स्रोतों में चर्चा।",article_angle_hi:"खबर का वैश्विक महत्व समझाएँ।",category:"World",trend_score:100-candidateId,why_trending:"Current multi-region source coverage",search_keywords:["world"],article_angle:"Explain the global context",language_priority:"Hindi"}))})}}]}),{status:200}));
+ const providers=[{name:"worldFixture",fetch:async region=>{regions.push(region);if(region==="JP")throw new Error("Feed unavailable");return Array.from({length:5},(_,i)=>({title:`Global story ${region} ${i}`,url:`https://source.test/${region}/${i}`,provider:"worldFixture",position:i+1,publishedAt:new Date()}));}}];
+ const result=await refreshTrends(undefined,{providers});
+ assert.equal(result.country,"WORLD");assert.equal(result.topics.length,5);assert.deepEqual(new Set(regions),new Set(worldRegions));
+ assert.equal(result.sourceHealth.filter(h=>h.status==="active").length,worldRegions.length-1);assert.equal(result.sourceHealth.find(h=>h.provider==="JP:worldFixture").status,"unavailable");
+ assert.ok(result.topics.every(topic=>topic.titleEn&&/[\u0900-\u097f]/.test(topic.titleHi)&&topic.whyTrendingHi&&topic.articleAngleHi&&topic.sources.every(source=>source.region)));
+ assert.equal(queryDate({}).country,"WORLD");
+ const api=await auth(request(app).get("/api/admin/trending"));assert.equal(api.status,200);assert.equal(api.body.data.country,"WORLD");assert.equal(api.body.data.topics.length,5);
+});
+
+test("legacy snapshots expose only five topics while retaining historical records",()=>{
+ const legacy={topics:Array.from({length:20},(_,i)=>({title:`Old topic ${i}`})),lockToken:"private",lockUntil:new Date()};
+ const result=publicSnapshot(legacy);assert.equal(result.topics.length,5);assert.equal(legacy.topics.length,20);assert.equal(result.lockToken,undefined);
 });
 
 test("invalid, expired and revoked access tokens return 401",async()=>{
@@ -113,19 +137,19 @@ test("MongoDB expires snapshots after 30 days and keeps recent history",async()=
 test("central AI endpoints enforce roles and obsolete configuration routes are gone",async()=>{
  for(const path of ["/api/admin/ai/readiness","/api/admin/ai/status"])assert.equal((await request(app).get(path)).status,401);
  assert.equal((await auth(request(app).get('/api/admin/ai/readiness'),authorToken)).status,403);
- const ready=await auth(request(app).get('/api/admin/ai/readiness'),editorToken);assert.equal(ready.status,200);assert.equal(ready.body.data.configured,true);assert.ok(!JSON.stringify(ready.body).includes(env.gemini.apiKey));
+ const ready=await auth(request(app).get('/api/admin/ai/readiness'),editorToken);assert.equal(ready.status,200);assert.equal(ready.body.data.configured,true);assert.ok(!JSON.stringify(ready.body).includes(env.groq.apiKey));
  for(const path of ['/api/admin/ai/config','/api/admin/ai/config/article','/api/admin/ai/config/trending']){
   assert.equal((await auth(request(app).get(path))).status,404);assert.equal((await auth(request(app).put(path)).send({apiKey:'ignored-key'})).status,404);
  }
  assert.equal((await auth(request(app).post('/api/admin/ai/test')).send({})).status,404);
  assert.equal((await auth(request(app).post('/api/admin/ai/generate-article'),authorToken).send({title:'Test'})).status,403);
 });
-test("status performs a Gemini request and returns safe connection diagnostics",async(t)=>{
+test("status performs a Groq request and returns safe connection diagnostics",async(t)=>{
  await RequestQuota.deleteMany({});
  t.mock.method(globalThis,'fetch',async()=>mockResponse(JSON.stringify({choices:[{message:{content:'OK'}}]})));
  const result=await auth(request(app).get('/api/admin/ai/status'));assert.equal(result.status,200);assert.equal(result.body.data.connected,true);
- globalThis.fetch.mock.restore();t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({error:{message:env.gemini.apiKey}}),{status:401,headers:{'Content-Type':'application/json'}}));
- const failed=await auth(request(app).get('/api/admin/ai/status'));assert.equal(failed.status,502);assert.equal(failed.body.data.connected,false);assert.ok(!JSON.stringify(failed.body).includes(env.gemini.apiKey));
- const saved=env.gemini.apiKey;env.gemini.apiKey='';try{const missing=await auth(request(app).get('/api/admin/ai/status'));assert.equal(missing.status,503);assert.equal(missing.body.data.configured,false);}finally{env.gemini.apiKey=saved;}
- const logs=await AuditLog.find({action:'AI_CONNECTION_TESTED'}).lean();assert.ok(!JSON.stringify(logs).includes(env.gemini.apiKey));
+ globalThis.fetch.mock.restore();t.mock.method(globalThis,'fetch',async()=>new Response(JSON.stringify({error:{message:env.groq.apiKey}}),{status:401,headers:{'Content-Type':'application/json'}}));
+ const failed=await auth(request(app).get('/api/admin/ai/status'));assert.equal(failed.status,502);assert.equal(failed.body.data.connected,false);assert.ok(!JSON.stringify(failed.body).includes(env.groq.apiKey));
+ const saved=env.groq.apiKey;env.groq.apiKey='';try{const missing=await auth(request(app).get('/api/admin/ai/status'));assert.equal(missing.status,503);assert.equal(missing.body.data.configured,false);}finally{env.groq.apiKey=saved;}
+ const logs=await AuditLog.find({action:'AI_CONNECTION_TESTED'}).lean();assert.ok(!JSON.stringify(logs).includes(env.groq.apiKey));
 });

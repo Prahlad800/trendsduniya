@@ -1,0 +1,378 @@
+{
+  "info": {
+    "name": "TrendsDuniya AI News Automation",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "apiUrl",
+      "value": "http://localhost:5000/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "cronSecret",
+      "value": ""
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "imageBatchId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Overview",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation"
+      }
+    },
+    {
+      "name": "Pause automation",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/settings",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"enabled\": false\n}"
+        }
+      }
+    },
+    {
+      "name": "Research current topics",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/research",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Test Groq (billed API request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/test/groq",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Test FLUX (billed API request)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/test/cloudflare",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Verify source evidence",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/verify",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"categoryId\": \"{{categoryId}}\",\n  \"language\": \"en-IN\",\n  \"sources\": [\n    {\n      \"title\": \"Source title\",\n      \"url\": \"https://example.org/official-report\",\n      \"publishedAt\": \"2026-10-16T00:00:00Z\",\n      \"evidence\": \"Replace with a verified factual summary from the source.\"\n    }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "generate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/generate",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "approve",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/approve",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "publish",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/publish",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "retry",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/retry",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "reject",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/reject",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "draft",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/draft",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Schedule",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/schedule",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"scheduledAt\": \"2026-10-17T06:00:00+05:30\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Worker tick",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/internal/jobs/automation",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{cronSecret}}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "regenerate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/regenerate",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "regenerate-image",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{apiUrl}}/admin/automation/tasks/{{taskId}}/regenerate-image",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"index\":0}"
+        }
+      }
+    },
+    {
+      "name": "Article editor AI images",
+      "item": [
+        {
+          "name": "Prepare five image concepts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{apiUrl}}/admin/ai/image-batches",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Satellite communications\",\n  \"content\": \"<p>Communication satellites link ground stations and remote regions using radio signals.</p>\",\n  \"summary\": \"An explanation of satellite networks and ground stations.\",\n  \"language\": \"en-IN\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) pm.environment.set(\"imageBatchId\", pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Generate next pending image (repeat up to five times)",
+          "request": {
+            "method": "POST",
+            "url": "{{apiUrl}}/admin/ai/image-batches/{{imageBatchId}}/next",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Read image progress",
+          "request": {
+            "method": "GET",
+            "url": "{{apiUrl}}/admin/ai/image-batches/{{imageBatchId}}"
+          }
+        }
+      ]
+    }
+  ]
+}

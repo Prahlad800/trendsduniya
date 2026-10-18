@@ -12,6 +12,8 @@ import { uniqueSlug } from "./slug.service.js";
 import { generateCanonical } from "./seo.service.js";
 import { deleteImage } from "./cloudinary.service.js";
 import { articleInput } from "../validators/article.validator.js";
+import {AutomationTask,AutomationSettings} from "../models/Automation.js";
+import {assertReady} from "./automation/policy.js";
 export const canPublish=admin=>["superadmin","admin","editor"].includes(admin.role);
 export function checkOwner(article,admin){if(admin.role==="author"&&String(article.createdBy)!==admin.id)throw new AppError("You can only access your own articles",403);}
 export async function findOwned(id,admin,session){
@@ -59,6 +61,7 @@ export async function validateArticle(article,session){
  }
  article.analytics||={};article.analytics.readingTime=Math.max(1,Math.ceil(body.split(/\s+/).filter(Boolean).length/220));
  if(["published","scheduled"].includes(article.status)){
+  if(article.automationTask){const task=await AutomationTask.findById(article.automationTask).session(session||null);const settings=await AutomationSettings.findById("main").session(session||null);assertReady(task,article,settings||{humanReview:true});}
   const required={title:article.title,content:body,excerpt:article.excerpt,category:article.category,"featured image":article.media?.featuredImage?.url,"image alt text":article.media?.featuredImage?.alt,"SEO title":article.seo?.metaTitle,"meta description":article.seo?.metaDescription};
   const missing=Object.keys(required).filter(key=>!required[key]);
   if(missing.length)throw new AppError(`Before publishing, add: ${missing.join(", ")}`,422);
@@ -67,12 +70,18 @@ export async function validateArticle(article,session){
  article.seo.robots||={};
  if(article.status!=="published"||article.visibility!=="public")article.seo.robots.index=false;
 }
-export async function saveArticle(req,id,input,action="UPDATE"){
+export async function saveArticle(req,id,input,action="UPDATE",automation=null){
  const data=articleInput.partial().parse(input);delete data.changeReason;
  const result=await mongoose.connection.transaction(async session=>{
-  const article=id?await findOwned(id,req.admin,session):new Article({createdBy:req.admin.id,status:"draft"});
+  const article=id?await findOwned(id,req.admin,session):new Article({createdBy:req.admin.id,status:"draft",...(automation?{_id:automation.id,automationTask:automation.task}:{})});
   const previous=id?article.toObject():null;
   if(action==="SCHEDULE_PUBLISH"&&(article.status!=="scheduled"||article.scheduledAt>new Date()))return {article,previousMedia:previous?.media};
+  if(article.automationTask&&data.status==="published"&&article.status!=="published"){
+   const task=await AutomationTask.findById(article.automationTask).session(session);
+   if(action==="AUTOMATION_PUBLISH"&&(task?.state!=="scheduled"||task.scheduledAt>new Date()))throw new AppError("Automation task is not due",409);
+   const filter={_id:"main",...(action==="AUTOMATION_PUBLISH"?{enabled:true,$or:[{lastPublishedAt:null},{lastPublishedAt:{$lte:new Date(Date.now()-30*60000)}}]}:{})};
+   if(!await AutomationSettings.findOneAndUpdate(filter,{$set:{lastPublishedAt:new Date()}},{session}))throw new AppError("Automation paused or waiting for publication spacing",409);
+  }
   if(previous?.status==="deleted"&&action!=="RESTORE")throw new AppError("Restore this article before editing",409);
   if(req.admin.role==="author"&&(previous?.status==="published"||previous?.status==="scheduled"||data.status&&data.status!=="draft"))throw new AppError("Authors can edit their own drafts; publishing needs an editor",403);
   if(data.status==="published"&&!canPublish(req.admin))throw new AppError("Publishing permission required",403);
@@ -95,6 +104,11 @@ export async function saveArticle(req,id,input,action="UPDATE"){
   if(action==="DELETE"){article.status="deleted";article.deletedAt=new Date();article.deletedBy=req.admin.id;}
   if(article.status==="published"){article.publishedAt||=new Date();article.publishedBy||=req.admin.id;if(previous?.status!=="published")article.seo.robots.index=true;}
   await validateArticle(article,session);
+  if(article.automationTask&&["scheduled","published"].includes(article.status)){
+   await AutomationTask.updateOne({_id:article.automationTask},{$set:article.status==="published"?{state:"published",publishedAt:article.publishedAt}:{state:"scheduled",scheduledAt:article.scheduledAt}},{session});
+  }else if(article.automationTask&&id&&data.status&&action!=="AUTOMATION_CREATE"&&action!=="AUTOMATION_IMAGES"){
+   await AutomationTask.updateOne({_id:article.automationTask},{$set:{state:["archived","deleted"].includes(article.status)?"rejected":"ready_for_review",approvedHash:""}},{session});
+  }
   if(previous){
    await ArticleRevision.create([{article:article.id,version:(previous.__v||0)+1,snapshot:previous,changedBy:req.admin.id,changeReason:input.changeReason||action}],{session});
    article.increment();

@@ -5,7 +5,7 @@ export const generationInput = z.object({
   title: text(300).min(1), language: z.enum(["en-IN", "hi-IN", "en", "hi"]).default("en-IN"),
   content: text(20000).default(""), summary: text(5000).default(""), sourceUrl: z.union([z.url({ protocol: /^https?$/ }), z.literal("")]).default(""),
   trendingTopic: text(200).default(""), trendId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
-  targetWords: z.number().int().min(300).max(10000).default(10000),
+  targetWords: z.number().int().min(300).max(50000).default(50000),
 }).strict();
 export const generatedArticle = articleInput.pick({title:true,slug:true,excerpt:true,summary:true,content:true,articleType:true,articleSection:true,trendingTopic:true,seo:true,faq:true,internalLinks:true,externalLinks:true}).required().extend({
   title: text(300).min(1), content: text(500000).min(1), excerpt: text(2000).min(1), summary: text(5000),

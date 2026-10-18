@@ -25,7 +25,7 @@ before(async()=>{
  }else{
   db=await MongoMemoryReplSet.create({instanceOpts:[{launchTimeout:60000}],replSet:{count:1},binary:{version:"7.0.14"}});
   env.mongoUri=db.getUri();
-  await mongoose.connect(env.mongoUri);
+  await mongoose.connect(env.mongoUri,mongoConnectionOptions());
  }
  for(const Model of [...Object.values(models),AuthSession])await Model.init();
  for(const [role,email]of [["superadmin","cms-admin@example.test"],["author","cms-author@example.test"],["editor","cms-editor@example.test"]])await Admin.create({name:"Integration "+role,email,password:"Integration-password-123",role});

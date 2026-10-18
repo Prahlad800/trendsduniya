@@ -21,6 +21,7 @@ import uploadRoutes from "./routes/upload.routes.js";
 import sitemapRoutes from "./routes/sitemap.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import automationRoutes,{automationJobs} from "./routes/automation.routes.js";
 import trendingRoutes, { jobsRouter } from "./routes/trending.routes.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
@@ -80,6 +81,8 @@ app.use("/api/admin/authors", adminAuthorRoutes);
 app.use("/api/admin/upload", uploadRoutes);
 app.use("/api/admin", analyticsRoutes);
 app.use("/api/admin/ai", aiRoutes);
+app.use("/api/admin/automation", automationRoutes);
+app.use("/api/internal/jobs", automationJobs);
 app.use("/api/admin/trending", trendingRoutes);
 app.use("/api/internal/jobs", jobsRouter);
 app.use(notFound);

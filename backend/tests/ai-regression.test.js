@@ -9,7 +9,7 @@ import {safeReturnPath,resetSession,sessionExpired,setSessionExpiry,checkSession
 import {apiGet,apiPost} from "../../admin/src/lib/api.js";
 import {trendProviders} from "../src/services/trending/providers/index.js";
 
-const selection=()=>({topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Technology",trend_score:100-candidateId,why_trending:"Current coverage",search_keywords:["policy"],article_angle:"Explain the update",language_priority:"Hindi"}))});
+const selection=()=>({topics:Array.from({length:5},(_,candidateId)=>({candidateId,title_en:"News "+candidateId,title_hi:"समाचार "+candidateId,why_trending_hi:"हाल की विश्वसनीय खबरों में चर्चा।",article_angle_hi:"खबर की पृष्ठभूमि समझाएँ।",category:"Technology",trend_score:100-candidateId,why_trending:"Current coverage",search_keywords:["policy"],article_angle:"Explain the update",language_priority:"Hindi"}))});
 const candidates=()=>rankTrends(Array.from({length:25},(_,i)=>({title:`Policy number ${i}`,provider:"news",url:`https://source.test/${i}`,position:i+1,publishedAt:new Date()})),new Date(),120);
 const article=()=>({title:"Verified policy",slug:"verified-policy",excerpt:"A policy update.",summary:"Policy context.",content:"<p>Policy update.</p>",articleType:"news",articleSection:"Technology",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Policy context",primaryKeyword:"policy",relatedKeywords:[],relatedTopics:[],metaTitle:"Policy update",metaDescription:"A policy update."},suggestedTags:[],editorialNotes:"Verify before publication."});
 
@@ -36,12 +36,14 @@ test("CMS client rejects malformed successes and reports HTTP failures safely",a
  }
 });
 
-test("trending selection enforces 20 distinct source-backed candidates",()=>{
+test("trending selection enforces five bilingual distinct source-backed candidates",()=>{
  const input=selection(),source=candidates();const result=parseTrendSelection("Result:\n"+JSON.stringify(input),source);
- assert.equal(result.length,20);assert.ok(result.every((topic,i)=>topic.rank===i+1&&topic.sourceCount===1&&source.some(s=>s.title===topic.title&&s.sources[0].url===topic.sources[0].url)));
- input.topics[19].candidateId=0;assert.throws(()=>parseTrendSelection(JSON.stringify(input),source));
- input.topics[19].candidateId=1000;assert.throws(()=>parseTrendSelection(JSON.stringify(input),source));
+ assert.equal(result.length,5);assert.ok(result.every((topic,i)=>topic.rank===i+1&&topic.sourceCount===1&&source.some(s=>s.title===topic.title&&s.sources[0].url===topic.sources[0].url)));
+ input.topics[4].candidateId=0;assert.throws(()=>parseTrendSelection(JSON.stringify(input),source));
+ input.topics[4].candidateId=1000;assert.throws(()=>parseTrendSelection(JSON.stringify(input),source));
  assert.throws(()=>parseTrendSelection('{"topics":[]}',source));
+ const missingHindi=selection();missingHindi.topics[0].title_hi="English only";assert.throws(()=>parseTrendSelection(JSON.stringify(missingHindi),source));
+ const tooMany=selection();tooMany.topics.push({...tooMany.topics[0],candidateId:5});assert.throws(()=>parseTrendSelection(JSON.stringify(tooMany),source));
 });
 test("optional arrays, long HTML, tables and manual fields survive generation",()=>{
  const data=article();data.content='<h2>Policy</h2><table><tbody><tr><th>Change</th><td>Context</td></tr></tbody></table><p>'+"policy context ".repeat(5000)+"</p>";

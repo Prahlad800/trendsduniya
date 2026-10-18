@@ -13,6 +13,7 @@ import authorRoutes, {
 import uploadRoutes from "./upload.routes.js";
 import analyticsRoutes from "./analytics.routes.js";
 import aiRoutes from "./ai.routes.js";
+import automationRoutes,{automationJobs} from "./automation.routes.js";
 import trendingRoutes, { jobsRouter } from "./trending.routes.js";
 const router = Router();
 router.use("/auth", authRoutes);
@@ -27,6 +28,8 @@ router.use("/admin/authors", adminAuthorRoutes);
 router.use("/admin/upload", uploadRoutes);
 router.use("/admin", analyticsRoutes);
 router.use("/admin/ai", aiRoutes);
+router.use("/admin/automation", automationRoutes);
+router.use("/internal/jobs", automationJobs);
 router.use("/admin/trending", trendingRoutes);
 router.use("/internal/jobs", jobsRouter);
 export default router;

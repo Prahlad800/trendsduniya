@@ -6,8 +6,11 @@ import env from "./env.js";
 // dns.setServers alone does not change Windows' dns.lookup resolver.
 export function mongoConnectionOptions() {
   const options = {
-    serverSelectionTimeoutMS: 15000,
-    connectTimeoutMS: 15000,
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
+    // Bound pool checkout and query execution below the admin proxy's 25s
+    // deadline, including a stalled socket after a connection was established.
+    timeoutMS: 15000,
     maxPoolSize: 10,
   };
   if (!env.mongoDnsServers.length) return options;

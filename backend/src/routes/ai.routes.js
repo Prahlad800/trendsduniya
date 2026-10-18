@@ -10,4 +10,7 @@ router.use((req,res,next)=>{res.set("Cache-Control","no-store");next();});
 router.get("/readiness",c.readiness);
 router.get("/status",durableLimit("ai-test",10),c.status);
 router.post("/generate-article",durableLimit("ai-generation",env.aiGenerationLimit),c.generate);
+router.post("/image-batches",durableLimit("ai-image-planning",10),c.startImages);
+router.get("/image-batches/:id",c.getImages);
+router.post("/image-batches/:id/next",durableLimit("ai-image-generation",env.aiImageDailyLimit,86400000),c.nextImage);
 export default router;

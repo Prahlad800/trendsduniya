@@ -17,11 +17,11 @@ const originalFetch=globalThis.fetch;
 const fixture={title:"Integration test headline",slug:"integration-test-headline",excerpt:"A test draft for end-to-end validation.",summary:"Test fixture only.",content:"<p>This is a test fixture, not a news report.</p>",articleType:"news",articleSection:"Testing",trendingTopic:"",seo:{searchIntent:"news",searchIntentDescription:"Test",primaryKeyword:"test",relatedKeywords:[],relatedTopics:[],metaTitle:"Integration test headline",metaDescription:"A test draft for end-to-end validation."},faq:[],internalLinks:[],externalLinks:[],suggestedTags:["Testing"],editorialNotes:"Test fixture only."};
 globalThis.fetch=async(url,options)=>{
   const host=new URL(url).hostname;
-  if(host==="generativelanguage.googleapis.com"){
-    const body=JSON.parse(options.body),probe=body.contents[0].parts[0].text==="Reply only with OK",trends=!probe&&!!JSON.parse(body.contents[0].parts[0].text).candidates;
-    const text=probe?"OK":JSON.stringify(trends?{topics:Array.from({length:20},(_,candidateId)=>({candidateId,category:"Testing",trend_score:100-candidateId,why_trending:"Test source coverage",search_keywords:["test"],article_angle:"Test editorial angle",language_priority:"Hindi"}))}:fixture);
-    assert.equal(new URL(url).pathname,`/v1beta/models/${env.gemini.model}:generateContent`);
-    return new Response(JSON.stringify({candidates:[{content:{parts:[{text}]},finishReason:"STOP"}]}),{headers:{"Content-Type":"application/json"}});
+  if(host==="api.groq.com"){
+    const body=JSON.parse(options.body),probe=body.messages[1].content==="Reply only with OK",trends=!probe&&!!JSON.parse(body.messages[1].content).candidates;
+    const text=probe?"OK":JSON.stringify(trends?{topics:Array.from({length:5},(_,candidateId)=>({candidateId,title_en:"News "+candidateId,title_hi:"समाचार "+candidateId,why_trending_hi:"हाल की विश्वसनीय खबरों में चर्चा।",article_angle_hi:"खबर की पृष्ठभूमि समझाएँ।",category:"Testing",trend_score:100-candidateId,why_trending:"Test source coverage",search_keywords:["test"],article_angle:"Test editorial angle",language_priority:"Hindi"}))}:fixture);
+    assert.equal(new URL(url).pathname,"/openai/v1/chat/completions");assert.equal(body.model,env.groq.model);
+    return new Response(JSON.stringify({choices:[{message:{content:text},finish_reason:"stop"}]}),{headers:{"Content-Type":"application/json"}});
   }
   if(["trends.google.com","news.google.com","feeds.bbci.co.uk"].includes(host))return new Response(`<rss><channel>${Array.from({length:25},(_,i)=>`<item><title>Integration test topic ${i}</title><link>https://example.com/test-topic-${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("")}</channel></rss>`,{status:200});
   return originalFetch(url,options);
@@ -42,7 +42,7 @@ async function launch(name,port,api){
 }
 try{
   db=await MongoMemoryReplSet.create({instanceOpts:[{launchTimeout:60000}],replSet:{count:1},binary:{version:"7.0.14"}});
-  env.mongoUri=db.getUri();env.gemini={apiKey:"fake-key-for-stack-test",model:"test-model"};
+  env.mongoUri=db.getUri();env.groq={apiKey:"fake-key-for-stack-test",model:"test-model"};
   await mongoose.connect(env.mongoUri);
   await Promise.all(Object.values(models).map(Model=>Model.init()));
   await Admin.create({name:"Stack Test",email:"stack@example.test",password:"Test-only-password-123",role:"superadmin"});
@@ -60,7 +60,7 @@ try{
   await cms("/auth/login","POST",{email:"stack@example.test",password:"Test-only-password-123"});
   assert.ok(cookies.includes("td_access="));await cms("/auth/me");
   const unavailableRoute=await cms("/admin/ai/missing","GET",undefined,502);assert.ok(unavailableRoute.message.includes("updated backend"));
-  const ready=await cms("/admin/ai/readiness");assert.equal(ready.data.configured,true);assert.ok(!JSON.stringify(ready).includes(env.gemini.apiKey));
+  const ready=await cms("/admin/ai/readiness");assert.equal(ready.data.configured,true);assert.ok(!JSON.stringify(ready).includes(env.groq.apiKey));
   const connected=await cms("/admin/ai/status");assert.equal(connected.data.connected,true);
   await cms("/admin/ai/config","GET",undefined,502);
   const generated=await cms("/admin/ai/generate-article","POST",{title:fixture.title,language:"en-IN"});
@@ -79,7 +79,7 @@ try{
   assert.equal(publicArticle.status,200);const html=await publicArticle.text();assert.ok(html.includes("Integration test headline"));assert.ok(html.includes("application/ld+json"));assert.ok(html.includes('rel="canonical"'));checks++;
   const legacy=await originalFetch(`http://127.0.0.1:${frontPort}/news/${draft.data.slug}`,{redirect:"manual"});if(legacy.status===308){assert.equal(legacy.headers.get("location"),`/article/${draft.data.slug}`);}else{assert.equal(legacy.status,200);const $=load(await legacy.text());assert.equal($('meta[http-equiv="refresh"]').attr("content"),`0;url=/article/${draft.data.slug}`);}checks++;
   await cms("/admin/trending");
-  const trends=await cms("/admin/trending/refresh","POST",{country:"IN"});assert.equal(trends.data.topics.length,20);
+  const trends=await cms("/admin/trending/refresh","POST",{country:"IN"});assert.equal(trends.data.topics.length,5);
   await cms("/admin/trending/history");await cms(`/admin/trending/${trends.data.topics[0]._id}`);
   await cms(`/admin/trending/${trends.data.topics[0]._id}/start-article`,"POST",{});
   for(const path of ["/setup-ai","/trending","/articles/new"]){const r=await originalFetch(`http://127.0.0.1:${adminPort}${path}`);assert.equal(r.status,200,path);checks++;}

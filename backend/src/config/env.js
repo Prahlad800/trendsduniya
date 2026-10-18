@@ -1,13 +1,15 @@
 import "dotenv/config";
 
 const env = {
-  gemini: {
-    apiKey: (process.env.GEMINI_API_KEY || "").trim(),
-    model: (process.env.GEMINI_MODEL || "").trim(),
+  groq: {
+    apiKey: (process.env.GROQ_API_KEY || "").trim(),
+    model: (process.env.GROQ_MODEL || "").trim(),
+    maxCompletionTokens: Math.min(32768, Math.max(256, Number(process.env.GROQ_MAX_COMPLETION_TOKENS) || 4096)),
   },
   cronSecret: process.env.CRON_SECRET || "",
   aiTimeoutMs: Math.min(240000, Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 240000)),
   aiGenerationLimit: Math.max(1, Number(process.env.AI_GENERATION_LIMIT) || 10),
+  aiImageDailyLimit: Math.max(5, Number(process.env.AI_IMAGE_DAILY_LIMIT) || 50),
   trendRefreshHours: Math.min(24, Math.max(1, Number(process.env.TREND_REFRESH_HOURS) || 24)),
   port: Number(process.env.PORT || 5000),
   nodeEnv: process.env.NODE_ENV || "development",

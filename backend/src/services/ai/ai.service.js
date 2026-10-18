@@ -7,7 +7,7 @@ import env from "../../config/env.js";
 import { AppError } from "../../utils/apiResponse.js";
 import { cleanGeneratedHtml, plainText } from "../../utils/sanitize.js";
 import { generationInput, generatedArticle, parseInput } from "../../validators/ai.validator.js";
-import { generateText, requireGemini, geminiStatus } from "../gemini.service.js";
+import { generateText, requireGroq, groqStatus } from "../groq.service.js";
 import { parseJsonObject } from "./json.js";
 
 import { editorialPrompt } from "./prompt.js";
@@ -26,8 +26,8 @@ export function parseGenerated(raw, context) {
 }
 export async function generateArticle(input) {
   const data=parseInput(generationInput,input);
-  requireGemini();
-  const config=geminiStatus();
+  requireGroq();
+  const config=groqStatus();
   const relevant=await Article.find({status:"published",visibility:"public",deletedAt:null,$text:{$search:data.title}}).select("title slug").limit(10).lean();
   const internal=relevant.map(a=>({title:a.title,url:`/article/${a.slug}`}));
   const external=data.sourceUrl?[{url:data.sourceUrl}]:[];

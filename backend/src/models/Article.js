@@ -14,6 +14,7 @@ const image = {
 const link = { title: String, url: String, anchorText: String, rel: String };
 const schema = new mongoose.Schema(
   {
+    automationTask: {type:mongoose.Schema.Types.ObjectId,ref:"AutomationTask"},
     title: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, index: true },
     excerpt: String,
@@ -119,6 +120,7 @@ const schema = new mongoose.Schema(
   { timestamps: true },
 );
 schema.index({ status: 1, publishedAt: -1 });
+schema.index({automationTask:1},{unique:true,partialFilterExpression:{automationTask:{$type:"objectId"}}});
 schema.index({
   title: "text",
   excerpt: "text",
