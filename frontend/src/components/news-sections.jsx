@@ -10,5 +10,5 @@ export function TrendingBar({articles}) {
 }
 export function RankedNews({articles}) {
  if(!articles.length)return null;
- return <aside className="ranked-news"><SectionHeading title="Most read" href="/trending"/><p className="ranked-caption">The stories catching your attention</p>{articles.slice(0,5).map((a,i)=><Link key={a.id||a._id} className="ranked-story" href={`/article/${a.slug}`}><span>{String(i+1).padStart(2,"0")}</span><div><small>{a.category?.name}</small><h3>{a.title}</h3><p>{a.readingTime||1} min read</p></div></Link>)}</aside>;
+ return <aside className="ranked-news"><SectionHeading title="Most read" href="/trending"/><p className="ranked-caption">The stories catching your attention</p>{articles.slice(0,5).map((a,i)=><Link key={a.id||a._id} className="ranked-story" href={`/article/${a.slug}`}><span>{String(i+1).padStart(2,"0")}</span><div><small>{a.category?.name}</small><h3>{a.title}</h3></div></Link>)}</aside>;
 }
